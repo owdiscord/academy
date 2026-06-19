@@ -1,0 +1,26 @@
+[tools]
+go = "1.25.7"
+
+[env]
+DATABASE_URI = "mysql://academy:academypass@localhost:3306/academy"
+THEME_DIR="../templates"
+
+[vars]
+app = "academy"
+cmd = "./cmd/{{vars.app}}"
+
+[tasks.run]
+description = "Run the app"
+run = "go run {{vars.cmd}}"
+
+[tasks.build]
+description = "Build the app"
+run = "go build -o bin/{{vars.app}} {{vars.cmd}}"
+
+[tasks.watch]
+description = "Run with live reload"
+run = "watchexec -r -e go -- go run {{vars.cmd}}"
+
+[tasks.clean]
+description = "Remove build artifacts"
+run = "rm -rf bin/"

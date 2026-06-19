@@ -2,6 +2,7 @@
 go = "1.25.7"
 
 [env]
+_.file = { path = ".env" }
 DATABASE_URI = "mysql://academy:academypass@localhost:3306/academy"
 THEME_DIR="../templates"
 

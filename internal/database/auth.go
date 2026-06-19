@@ -25,7 +25,7 @@ func (db *DB) CreateSession(ctx context.Context, userID int, waveID int) (string
 	expires := time.Now().Add(expiry)
 
 	_, err := db.conn.ExecContext(ctx, `INSERT INTO sessions (
-		token, user_id, wave_id, expires_at,
+		token, user_id, wave_id, expires_at
 	) VALUES (?, ?, ?, ?)`, token, userID, waveID, expires)
 
 	return token, expires, err

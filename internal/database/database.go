@@ -3,6 +3,10 @@
 package database
 
 import (
+	"fmt"
+	"net/url"
+	"strings"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/vinovest/sqlx"
 )
@@ -12,7 +16,12 @@ type DB struct {
 }
 
 func New(databaseURI string) (*DB, error) {
-	conn, err := sqlx.Connect("mysql", databaseURI)
+	dsn, err := urlToDSN(databaseURI)
+	if err != nil {
+		return nil, err
+	}
+
+	conn, err := sqlx.Connect("mysql", dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -20,4 +29,17 @@ func New(databaseURI string) (*DB, error) {
 	return &DB{
 		conn,
 	}, nil
+}
+
+func urlToDSN(databaseURL string) (string, error) {
+	u, err := url.Parse(databaseURL)
+	if err != nil {
+		return "", err
+	}
+	user := u.User.Username()
+	pass, _ := u.User.Password()
+	host := u.Host
+	dbname := strings.TrimPrefix(u.Path, "/")
+
+	return fmt.Sprintf("%s:%s@tcp(%s)/%s?parseTime=true", user, pass, host, dbname), nil
 }

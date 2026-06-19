@@ -4,7 +4,6 @@ package handlers
 import (
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -63,7 +62,7 @@ func (h *Handlers) AuthCallback(c *echo.Context) error {
 	)
 	if err != nil || authRes.StatusCode >= 400 {
 		body, _ := io.ReadAll(authRes.Body)
-		log.Printf("discord token error: %s", body)
+		c.Logger().Error("discord token error", "http_body", body)
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "could not retrieve your discord token"})
 	}
 	defer authRes.Body.Close()
@@ -81,7 +80,7 @@ func (h *Handlers) AuthCallback(c *echo.Context) error {
 	meRes, err := http.DefaultClient.Do(req)
 	if err != nil || meRes.StatusCode >= 400 {
 		body, _ := io.ReadAll(meRes.Body)
-		log.Printf("discord me error: %s", body)
+		c.Logger().Error("discord @me error", "http_body", body)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve your discord account details, despite getting a token successfully."})
 	}
 	defer meRes.Body.Close()
@@ -97,14 +96,14 @@ func (h *Handlers) AuthCallback(c *echo.Context) error {
 	// Look up user in DB
 	user, err := h.db.LatestUserForDiscordID(c.Request().Context(), discordUser.ID)
 	if err != nil || user == nil {
-		log.Printf("unknown user attempted access: discord_id=%s name=%s", discordUser.ID, discordUser.GlobalName)
+		c.Logger().Error("unknown user attempted to access", "discord_id", discordUser.ID, "name", discordUser.GlobalName)
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "You are not authorized to access this page."})
 	}
 
 	// Create session
 	token, expiry, err := h.db.CreateSession(c.Request().Context(), user.ID, user.WaveID)
 	if err != nil {
-		log.Printf("failed to create session: discord_id=%s user_id=%d wave=%d err=%v", discordUser.ID, user.ID, user.WaveID, err)
+		c.Logger().Error("failed to create session", "discord_id", discordUser.ID, "user_id", user.ID, "wave_id", user.WaveID, "err", err)
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Failed to create this session."})
 	}
 

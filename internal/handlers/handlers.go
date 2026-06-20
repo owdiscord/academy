@@ -2,33 +2,30 @@
 package handlers
 
 import (
-	"encoding/json"
-	"io"
+	"context"
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
+	"path/filepath"
 	"time"
 
 	"github.com/labstack/echo/v5"
 	"github.com/owdiscord/academy/internal/cache"
+	"github.com/owdiscord/academy/internal/config"
 	"github.com/owdiscord/academy/internal/database"
+	"github.com/owdiscord/academy/internal/discord"
 )
 
 type Handlers struct {
 	db           *database.DB
-	clientID     string
-	clientSecret string
-	redirectURI  string
+	config       *config.Config
 	sessionCache *cache.Cache[string, database.Session]
 }
 
-func New(db *database.DB, clientID string, clientSecret string, redirectURI string) Handlers {
+func New(db *database.DB, config *config.Config) Handlers {
 	return Handlers{
 		db:           db,
-		clientID:     clientID,
-		clientSecret: clientSecret,
-		redirectURI:  redirectURI,
+		config:       config,
 		sessionCache: cache.New[string, database.Session](time.Minute * 3),
 	}
 }
@@ -36,7 +33,7 @@ func New(db *database.DB, clientID string, clientSecret string, redirectURI stri
 // -- Endpoints ----
 
 func (h *Handlers) AuthRedirect(c *echo.Context) error {
-	url := "https://discord.com/oauth2/authorize?client_id=" + h.clientID + "&response_type=code&redirect_uri=" + url.QueryEscape(h.redirectURI) + "&scope=identify"
+	url := "https://discord.com/oauth2/authorize?client_id=" + h.config.ClientID + "&response_type=code&redirect_uri=" + url.QueryEscape(h.config.RedirectURI) + "&scope=identify"
 	return c.Redirect(http.StatusTemporaryRedirect, url)
 }
 
@@ -46,51 +43,14 @@ func (h *Handlers) AuthCallback(c *echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "no code provided"})
 	}
 
-	// Exchange code for token
-	params := url.Values{}
-	params.Set("grant_type", "authorization_code")
-	params.Set("client_id", h.clientID)
-	params.Set("client_secret", h.clientSecret)
-	params.Set("code", code)
-	params.Set("scope", "identify")
-	params.Set("redirect_uri", h.redirectURI)
-
-	authRes, err := http.Post(
-		"https://discord.com/api/v10/oauth2/token",
-		"application/x-www-form-urlencoded",
-		strings.NewReader(params.Encode()),
-	)
-	if err != nil || authRes.StatusCode >= 400 {
-		body, _ := io.ReadAll(authRes.Body)
-		c.Logger().Error("discord token error", "http_body", body)
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "could not retrieve your discord token"})
-	}
-	defer authRes.Body.Close()
-
-	var tokenResp struct {
-		AccessToken string `json:"access_token"`
-	}
-	if err := json.NewDecoder(authRes.Body).Decode(&tokenResp); err != nil {
+	accessToken, err := discord.GetAccessToken(*h.config, code)
+	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not parse discord token response"})
 	}
 
-	// Fetch Discord user
-	req, _ := http.NewRequest("GET", "https://discord.com/api/v10/users/@me", nil)
-	req.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
-	meRes, err := http.DefaultClient.Do(req)
-	if err != nil || meRes.StatusCode >= 400 {
-		body, _ := io.ReadAll(meRes.Body)
-		c.Logger().Error("discord @me error", "http_body", body)
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve your discord account details, despite getting a token successfully."})
-	}
-	defer meRes.Body.Close()
-
-	var discordUser struct {
-		ID         string `json:"id"`
-		GlobalName string `json:"global_name"`
-	}
-	if err := json.NewDecoder(meRes.Body).Decode(&discordUser); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not parse discord user response"})
+	discordUser, err := discord.GetUser("Bearer "+accessToken, "@me")
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	// Look up user in DB
@@ -119,7 +79,32 @@ func (h *Handlers) AuthCallback(c *echo.Context) error {
 	}
 	c.SetCookie(cookie)
 
-	return c.Redirect(http.StatusFound, "/academy")
+	go func() {
+		if err := h.db.UpdateUserDetails(context.Background(), *discordUser); err != nil {
+			c.Logger().Error("could not update user details", "userid", discordUser.ID, "db_err", err)
+		}
+
+		if err := discord.DownloadAvatar(*discordUser, "./avatars/"); err != nil {
+			c.Logger().Error("could not download avatar", "userid", discordUser.ID, "avatar_hash", discordUser.Avatar, "io_err", err)
+		}
+	}()
+
+	return c.Redirect(http.StatusFound, "/")
+}
+
+func (h *Handlers) AuthLogout(c *echo.Context) error {
+	cookie := &http.Cookie{
+		Name:     "academy_session",
+		Value:    "",
+		HttpOnly: true,
+		Secure:   os.Getenv("DEV_SERVER") == "",
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Now(),
+		Path:     "/",
+	}
+	c.SetCookie(cookie)
+
+	return c.Redirect(http.StatusFound, "/")
 }
 
 func (h *Handlers) Me(c *echo.Context) error {
@@ -177,6 +162,36 @@ func (h *Handlers) Case(c *echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{})
 }
 
+func (h *Handlers) GetIssues(c *echo.Context) error {
+	sess := c.Get("session_value").(*database.Session)
+	role := sess.Role
+	waveID := sess.WaveID
+
+	if role == "admin" {
+		issues, err := h.db.GetFullIssues(c.Request().Context(), waveID)
+		if err != nil {
+			c.Logger().Error("could not get issues", "db_err", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not get issues"})
+		}
+
+		return c.JSON(http.StatusOK, issues)
+	}
+
+	return c.JSON(http.StatusOK, []string{})
+}
+
+func (h *Handlers) GetIssue(c *echo.Context) error {
+	return c.JSON(http.StatusOK, map[string]string{})
+}
+
+func (h *Handlers) CreateIssue(c *echo.Context) error {
+	return c.JSON(http.StatusOK, map[string]string{})
+}
+
+func (h *Handlers) UpdateIssue(c *echo.Context) error {
+	return c.JSON(http.StatusOK, map[string]string{})
+}
+
 func (h *Handlers) Questions(c *echo.Context) error {
 	questions, err := h.db.GetQuestions(c.Request().Context())
 	if err != nil {
@@ -185,6 +200,15 @@ func (h *Handlers) Questions(c *echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, questions)
+}
+
+func (h *Handlers) Avatar(c *echo.Context) error {
+	userID := c.Param("userID")[:len(c.Param("userID"))-len(filepath.Ext(c.Param("userID")))]
+	if _, err := os.Stat("./avatars/" + userID + ".png"); err != nil {
+		return c.File("./avatars/default.png")
+	}
+
+	return c.File("./avatars/" + userID + ".png")
 }
 
 // -- Middleware ----

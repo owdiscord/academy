@@ -1,2 +1,4 @@
 bin/
 .env
+avatars/*
+!avatars/default.png

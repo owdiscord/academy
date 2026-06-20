@@ -84,6 +84,43 @@ CREATE TABLE IF NOT EXISTS collection_log (
   PRIMARY KEY (id)
 );
 
+CREATE TABLE IF NOT EXISTS threads (
+  id BINARY(16) PRIMARY KEY,
+  -- 1 = open, 2 = closed, 3 = suspended.
+  status INT NOT NULL DEFAULT 0,
+  user_id VARCHAR(22) NOT NULL,
+  user_nme VARCHAR(128) NOT NULL,
+  created_at DATETIME NOT NULL,
+  imported_at DATETIME NOT NULL DEFAULT NOW(),
+  closed_by_id VARCHAR(22) NOT NULL,
+  roles TEXT NOT NULL,
+  -- The following are stats that are calculated every time messages are imported. 
+  inbound_messages INT DEFAULT 0,
+  outbound_messages INT DEFAULT 0,
+  chat_messages INT DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS thread_messages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  thread_id BINARY(16) REFERENCES threads(id),
+  -- 1 = open, 2 = closed, 3 = suspended.
+  status INT NOT NULL DEFAULT 0,
+  user_id VARCHAR(22) NOT NULL,
+  user_nme VARCHAR(128) NOT NULL,
+  created_at DATETIME NOT NULL,
+  imported_at DATETIME NOT NULL DEFAULT NOW(),
+  closed_by_id VARCHAR(22) NOT NULL,
+  roles TEXT NOT NULL,
+  -- The following are stats that are calculated every time messages are imported. 
+  inbound_messages INT DEFAULT 0,
+  outbound_messages INT DEFAULT 0,
+  chat_messages INT DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS cases (
+
+);
+
 -- migrate:down
 DROP TABLE IF EXISTS collection_log;
 DROP TABLE IF EXISTS stats_per_date;

@@ -1,6 +1,10 @@
 package database
 
-import "context"
+import (
+	"context"
+
+	"github.com/owdiscord/academy/internal/discord"
+)
 
 type Staff struct {
 	ID          int    `db:"id" json:"id"`
@@ -9,6 +13,14 @@ type Staff struct {
 	Username    string `db:"username" json:"username"`
 	DisplayName string `db:"display_name" json:"display_name"`
 	Role        string `db:"role" json:"role"`
+}
+
+func (db *DB) UpdateUserDetails(ctx context.Context, details discord.DiscordUser) error {
+	if _, err := db.conn.ExecContext(ctx, "UPDATE staff SET username = ?, display_name = ? WHERE snowflake = ?", details.Username, details.GlobalName, details.ID); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (db *DB) GetWaveTrainees(ctx context.Context, waveID int) ([]Staff, error) {

@@ -9,8 +9,8 @@ import (
 
 type Config struct {
 	DatabaseURI  string `env:"DATABASE_URI"`
-	AthenaDBURI  string `env:"DATABASE_URI"`
-	ModmailDBURI string `env:"DATABASE_URI"`
+	AthenaDBURI  string `env:"ATHENA_DB_URI"`
+	ModmailDBURI string `env:"MODMAIL_DB_URI"`
 	BotToken     string `env:"DISCORD_BOT_TOKEN"`
 	ClientID     string `env:"DISCORD_CLIENT_ID"`
 	ClientSecret string `env:"DISCORD_CLIENT_SECRET"`

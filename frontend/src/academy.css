@@ -1,0 +1,178 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-gray-1000: #25262a;
+  --color-gray-950: #2c2d32;
+  --color-gray-900: #323339;
+  --color-gray-800: #3e3f45;
+  --color-gray-750: #494950;
+  --color-gray-400: #84858b;
+  --color-gray-100: #dfdfe1;
+  --color-ow-orange: #f06414;
+  --color-closed: #ed4447;
+
+  --color-ow-mod: #fe701d;
+  --color-ow-helper: #ffe135;
+  --color-ow-admin: #4781ff;
+
+  --color-green-bg: #2f403e;
+  --color-green-fg: #62b77c;
+
+  --color-case-blue: #3498db;
+
+  --color-blurple-500: #5865f2;
+
+  --color-tag-bg: #40446b;
+  --color-tag-fg: #c9d3fb;
+
+  --color-info-bg: #323c4b;
+  --color-info-fg: #8ebefa;
+
+  --grid-template-columns-page: minmax(220px, 280px) minmax(200px, 400px) 1fr;
+
+  /* --color-gray-950: #161619; */
+  /* --color-gray-900: #1b1b1f; */
+  /* --color-gray-800: #2e3136; */
+  /* --color-gray-400: #84858b; */
+  /* --color-ow-orange: #f06414; */
+}
+
+body {
+  background: var(--color-gray-950);
+  color: var(--color-gray-100);
+  font-family: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+.page-sidebar {
+  & .sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 3);
+    padding: 0 calc(var(--spacing) * 5);
+    border-bottom: var(--color-gray-900) 1px solid;
+    height: calc(var(--spacing) * 20);
+    font-weight: bold;
+
+    & svg:first-child {
+      color: var(--color-ow-orange);
+      width: calc(var(--spacing) * 10);
+      height: calc(var(--spacing) * 10);
+    }
+  }
+
+  & ul {
+    padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+    display: grid;
+    gap: calc(var(--spacing) * 1.5);
+  }
+
+  & li {
+    position: relative;
+  }
+
+  & li>a {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 2.5);
+    border-radius: var(--radius-lg);
+    padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+    transition-property: color, background-color;
+    transition-duration: var(--default-transition-duration);
+    transition-timing-function: var(--default-transition-timing-function);
+
+    & svg {
+      color: var(--color-gray-400);
+      width: calc(var(--spacing) * 5);
+      height: calc(var(--spacing) * 5);
+      transition-property: color;
+      transition-duration: var(--default-transition-duration);
+      transition-timing-function: var(--default-transition-timing-function);
+    }
+  }
+
+  & li.active>a {
+    background: var(--color-gray-800);
+    color: var(--color-white);
+
+    & svg {
+      color: var(--color-ow-orange);
+    }
+  }
+}
+
+.message-content {
+  color: var(--color-gray-100);
+  line-height: 1.4;
+
+  & h1 {
+    font-size: var(--text-2xl);
+    color: var(--color-white);
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: .6rem;
+  }
+
+  & h2 {
+    font-size: var(--text-xl);
+    color: var(--color-white);
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: .4rem;
+  }
+
+  & h6 {
+    color: var(--color-gray-400);
+    font-size: .9rem;
+  }
+}
+
+.form-row {
+  &:not(:last-child) {
+    margin-bottom: calc(var(--spacing) * 4);
+  }
+
+  & label {
+    display: block;
+    color: var(--color-gray-300);
+    margin-bottom: calc(var(--spacing) * 1);
+    font-size: var(--text-sm);
+  }
+
+  & input,
+  & select,
+  & textarea {
+    display: block;
+    width: 100%;
+    background: var(--color-gray-950);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-gray-800);
+    padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 4);
+    color: var(--color-white);
+    transition-property: border-color, outline;
+    transition-duration: var(--default-transition-duration);
+    transition-timing-function: var(--default-transition-timing-function);
+    outline: --alpha(var(--color-blurple-500) / 0%) 2px solid;
+
+    &:focus {
+      outline: --alpha(var(--color-blurple-500) / 20%) 2px solid;
+      border-color: var(--color-blurple-500);
+    }
+  }
+
+  & button[type="submit"] {
+    background: var(--color-blurple-500);
+    border-radius: var(--radius-md);
+    padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 4);
+    color: var(--color-white);
+    width: 100%;
+    display: block;
+    opacity: 1;
+    transition-property: opacity;
+    transition-duration: var(--default-transition-duration);
+    transition-timing-function: var(--default-transition-timing-function);
+    cursor: pointer;
+    font-weight: var(--font-weight-semibold);
+
+    &:hover {
+      opacity: .8;
+    }
+  }
+}

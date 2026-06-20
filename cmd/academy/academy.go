@@ -2,48 +2,32 @@ package main
 
 import (
 	"log"
-	"os"
 
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
+	"github.com/owdiscord/academy/internal/config"
 	"github.com/owdiscord/academy/internal/database"
 	"github.com/owdiscord/academy/internal/handlers"
 	"github.com/owdiscord/academy/internal/migrations"
 )
 
 func main() {
-	// Get necessary env variables
-	databaseURI := os.Getenv("DATABASE_URI")
-	if databaseURI == "" {
-		log.Fatalf("Missing env variable: DATABASE_URI")
-	}
-
-	clientID := os.Getenv("DISCORD_CLIENT_ID")
-	if clientID == "" {
-		log.Fatalf("Missing env variable: DISCORD_CLIENT_ID")
-	}
-
-	secretID := os.Getenv("DISCORD_CLIENT_SECRET")
-	if secretID == "" {
-		log.Fatalf("Missing env variable: DISCORD_CLIENT_SECRET")
-	}
-
-	redirectURI := os.Getenv("DISCORD_REDIRECT_URI")
-	if redirectURI == "" {
-		log.Fatalf("Missing env variable: DISCORD_REDIRECT_URI")
+	config, err := config.Load()
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	// Run database migrations
-	if err := migrations.Migrate(databaseURI); err != nil {
+	if err := migrations.Migrate(config.DatabaseURI); err != nil {
 		log.Fatalf("cannot run migrations: %+v\n", err)
 	}
 
-	db, err := database.New(databaseURI)
+	db, err := database.New(config.DatabaseURI)
 	if err != nil {
 		log.Fatalf("cannot connect to database: %+v\n", err)
 	}
 
-	h := handlers.New(db, clientID, secretID, redirectURI)
+	h := handlers.New(db, config)
 
 	// Start the web app
 	e := echo.New()
@@ -55,13 +39,18 @@ func main() {
 
 	g := e.Group("/api")
 	g.Use(h.RequireAuth)
+	g.Any("/auth/logout", h.AuthLogout)
 	g.GET("/auth/me", h.Me)
 	g.GET("/wave", h.Wave)
 	g.GET("/threads", h.Threads)
 	g.GET("/threads/:id", h.Thread)
 	g.GET("/cases", h.Cases)
 	g.GET("/cases/:id", h.Case)
+	g.GET("/issues", h.GetIssues)
+	g.GET("/issues/:id", h.GetIssue)
+	g.PUT("/issues/id", h.CreateIssue)
 	g.GET("/questions", h.Questions)
+	g.GET("/avatar/:userID", h.Avatar)
 
 	e.Start(":1323")
 }

@@ -1,14 +1,14 @@
 -- migrate:up
 CREATE TABLE IF NOT EXISTS waves (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  created_at DATETIME NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   -- One of 'interviews', 'helper', 'historic',
   -- set to 'interviews' when we start, only showing the interview questions, then
   -- set to 'helper' when we want helpers to be managing things, then 'historic'
   -- when the wave ends and trianees are promoted.
   state VARCHAR(32) NOT NULL DEFAULT 'interviews',
-  begin_at DATETIME NOT NULL DEFAULT NOW(),
-  close_at DATETIME NOT NULL
+  begin_at TIMESTAMP NULL DEFAULT NOW(),
+  close_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS staff (
@@ -29,9 +29,10 @@ CREATE TABLE IF NOT EXISTS issues (
   id INT AUTO_INCREMENT PRIMARY KEY,
   wave_id INT REFERENCES waves(id),
   created_by VARCHAR(22) REFERENCES staff(snowflake),
-  trainee_id VARCHAR(22) REFERENCES staff(snowflake),
+  staff_id VARCHAR(22) REFERENCES staff(snowflake),
   thread_id VARCHAR(36) NULL DEFAULT NULL,
   message_id VARCHAR(36) NULL DEFAULT NULL,
+  case_id INT NULL DEFAULT NULL,
   -- One of 'pending', 'handled', 'archived', or 'deleted'
   status VARCHAR(32) NOT NULL DEFAULT 'pending',
   reason TEXT NOT NULL
@@ -39,8 +40,8 @@ CREATE TABLE IF NOT EXISTS issues (
 
 CREATE TABLE IF NOT EXISTS interview_questions (
   id INT PRIMARY KEY,
-  created_at DATETIME NOT NULL DEFAULT NOW(),
-  updated_at DATETIME NULL DEFAULT NOW(),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NULL DEFAULT NOW(),
   text VARCHAR(512) NOT NULL
 );
 
@@ -90,8 +91,8 @@ CREATE TABLE IF NOT EXISTS threads (
   status INT NOT NULL DEFAULT 0,
   user_id VARCHAR(22) NOT NULL,
   user_nme VARCHAR(128) NOT NULL,
-  created_at DATETIME NOT NULL,
-  imported_at DATETIME NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMP NOT NULL,
+  imported_at TIMESTAMP NOT NULL DEFAULT NOW(),
   closed_by_id VARCHAR(22) NOT NULL,
   roles TEXT NOT NULL,
   -- The following are stats that are calculated every time messages are imported. 
@@ -106,10 +107,10 @@ CREATE TABLE IF NOT EXISTS thread_messages (
   -- 1 = open, 2 = closed, 3 = suspended.
   status INT NOT NULL DEFAULT 0,
   user_id VARCHAR(22) NOT NULL,
-  user_nme VARCHAR(128) NOT NULL,
-  created_at DATETIME NOT NULL,
-  imported_at DATETIME NOT NULL DEFAULT NOW(),
-  closed_by_id VARCHAR(22) NOT NULL,
+  user_name VARCHAR(128) NOT NULL,
+  created_at TIMESTAMP NOT NULL,
+  imported_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  closed_by_id VARCHAR(22) NULL,
   roles TEXT NOT NULL,
   -- The following are stats that are calculated every time messages are imported. 
   inbound_messages INT DEFAULT 0,
@@ -118,10 +119,30 @@ CREATE TABLE IF NOT EXISTS thread_messages (
 );
 
 CREATE TABLE IF NOT EXISTS cases (
+  -- Externally known as "case number" in Athena
+  id INT PRIMARY KEY,
+  actioned_user_id VARCHAR(22) NOT NULL,
+  actioned_user_name VARCHAR(128) NOT NULL,
+  wave_id INT REFERENCES waves(id),
+  mod_id VARCHAR(22) REFERENCES staff(snowflake),
+  type INT NOT NULL,
+  created_at TIMESTAMP NOT NULL,
+  imported_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
 
+CREATE TABLE IF NOT EXISTS case_notes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  case_id INT REFERENCES cases(id),
+  mod_id VARCHAR(22) REFERENCES staff(snowflake),
+  body TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL
 );
 
 -- migrate:down
+DROP TABLE IF EXISTS thread_messages;
+DROP TABLE IF EXISTS threads;
+DROP TABLE IF EXISTS case_notes;
+DROP TABLE IF EXISTS cases;
 DROP TABLE IF EXISTS collection_log;
 DROP TABLE IF EXISTS stats_per_date;
 DROP TABLE IF EXISTS sessions;

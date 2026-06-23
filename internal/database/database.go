@@ -16,7 +16,7 @@ type DB struct {
 }
 
 func New(databaseURI string) (*DB, error) {
-	dsn, err := urlToDSN(databaseURI)
+	dsn, err := URLtoDSN(databaseURI)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,7 @@ func New(databaseURI string) (*DB, error) {
 	}, nil
 }
 
-func urlToDSN(databaseURL string) (string, error) {
+func URLtoDSN(databaseURL string) (string, error) {
 	u, err := url.Parse(databaseURL)
 	if err != nil {
 		return "", err

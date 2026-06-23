@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -173,11 +174,28 @@ func (h *Handlers) Thread(c *echo.Context) error {
 }
 
 func (h *Handlers) Cases(c *echo.Context) error {
-	return c.JSON(http.StatusOK, []string{})
+	cases, err := h.db.GetAllCases(c.Request().Context())
+	if err != nil {
+		c.Logger().Error("could not get cases", "db", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve cases"})
+	}
+
+	return c.JSON(http.StatusOK, cases)
 }
 
 func (h *Handlers) Case(c *echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]string{})
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "given ID was not a valid integer"})
+	}
+
+	modCase, err := h.db.GetCaseByID(c.Request().Context(), id)
+	if err != nil {
+		c.Logger().Error("could not get case", "id", id, "db", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve case"})
+	}
+
+	return c.JSON(http.StatusOK, modCase)
 }
 
 func (h *Handlers) GetIssues(c *echo.Context) error {

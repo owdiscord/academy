@@ -7,12 +7,12 @@ import (
 )
 
 type Staff struct {
-	ID          int    `db:"id" json:"id"`
-	WaveID      int    `db:"wave_id" json:"wave_id"`
+	ID          int    `db:"id" json:"id,omitempty"`
+	WaveID      int    `db:"wave_id" json:"wave_id,omitempty"`
 	Snowflake   string `db:"snowflake" json:"snowflake"`
 	Username    string `db:"username" json:"username"`
 	DisplayName string `db:"display_name" json:"display_name"`
-	Role        string `db:"role" json:"role"`
+	Role        string `db:"role" json:"role,omitempty"`
 }
 
 func (db *DB) UpdateUserDetails(ctx context.Context, details discord.DiscordUser) error {

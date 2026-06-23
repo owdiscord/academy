@@ -51,7 +51,8 @@ type WaveState {
 type Trainee {
   Trainee(
     id: String,
-    name: String,
+    username: String,
+    display_name: String,
     thread_participation_count: Int,
     message_count: Int,
     case_count: Int,
@@ -97,21 +98,23 @@ fn issue_decoder() -> decode.Decoder(Issue) {
 }
 
 fn trainee_decoder() -> decode.Decoder(Trainee) {
-  use id <- decode.field("id", decode.string)
-  use name <- decode.field("name", decode.string)
-  use thread_participation_count <- decode.field(
-    "thread_participation_count",
-    decode.int,
-  )
-  use message_count <- decode.field("message_count", decode.int)
-  use case_count <- decode.field("case_count", decode.int)
+  use id <- decode.field("snowflake", decode.string)
+  use username <- decode.field("username", decode.string)
+  use display_name <- decode.field("display_name", decode.string)
+  // use thread_participation_count <- decode.field(
+  //   "thread_participation_count",
+  //   decode.int,
+  // )
+  // use message_count <- decode.field("message_count", decode.int)
+  // use case_count <- decode.field("case_count", decode.int)
 
   decode.success(Trainee(
     id:,
-    name:,
-    thread_participation_count:,
-    message_count:,
-    case_count:,
+    username:,
+    display_name:,
+    thread_participation_count: 0,
+    message_count: 0,
+    case_count: 0,
   ))
 }
 
@@ -1001,7 +1004,7 @@ fn threads_sidebar(model: Model) {
         [
           html.option([attribute.value("")], "Any Trainee"),
           ..list.map(model.trainees, fn(trainee) {
-            html.option([attribute.value(trainee.id)], trainee.name)
+            html.option([attribute.value(trainee.id)], trainee.username)
           })
         ],
       ),
@@ -1157,7 +1160,7 @@ fn cases_sidebar(model: Model) {
         [
           html.option([attribute.value("")], "Any Trainee"),
           ..list.map(model.trainees, fn(trainee) {
-            html.option([attribute.value(trainee.id)], trainee.name)
+            html.option([attribute.value(trainee.id)], trainee.username)
           })
         ],
       ),
@@ -1443,7 +1446,7 @@ fn stats_view(model: Model) {
                 html.figure([class("size-14 rounded-full bg-black")], []),
                 html.div([], [
                   html.h3([class("font-semibold text-lg text-ow-mod")], [
-                    html.text(trainee.name),
+                    html.text(trainee.username),
                   ]),
                   html.p([class("text-gray-300")], [
                     html.text(

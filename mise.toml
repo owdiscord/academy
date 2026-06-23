@@ -25,3 +25,13 @@ run = "watchexec -r -e go -- go run {{vars.cmd}}"
 [tasks.clean]
 description = "Remove build artifacts"
 run = "rm -rf bin/"
+
+[tasks."migrate:down"]
+env = { DATABASE_URL = "mysql://academy:academypass@localhost:3306/academy" }
+description = "Down all migrations with dbmate"
+run = "dbmate -d './internal/migrations' down"
+
+[tasks."migrate:up"]
+env = { DATABASE_URL = "mysql://academy:academypass@localhost:3306/academy" }
+description = "Run all migrations with dbmate"
+run = "dbmate -d './internal/migrations' up"

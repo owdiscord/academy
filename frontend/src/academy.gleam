@@ -35,7 +35,7 @@ type Route {
   Threads
   Thread(id: String, content: option.Option(ModmailThread))
   Cases
-  Case(id: Int)
+  Case(id: Int, content: option.Option(AthenaCase))
   Stats
   Issues
   InterviewQuestions
@@ -295,6 +295,83 @@ fn modmail_thread_decoder() -> decode.Decoder(ModmailThread) {
   ))
 }
 
+type AthenaCaseNote {
+  AthenaCaseNote(id: Int, mod_id: String, body: String)
+}
+
+fn athena_case_note_decoder() -> decode.Decoder(AthenaCaseNote) {
+  use id <- decode.field("id", decode.int)
+  use mod_id <- decode.field("mod_id", decode.string)
+  use body <- decode.field("body", decode.string)
+  decode.success(AthenaCaseNote(id:, mod_id:, body:))
+}
+
+type AthenaCaseKind {
+  CaseBan
+  CaseUnban
+  CaseNote
+  CaseWarn
+  CaseKick
+  CaseMute
+  CaseUnmute
+  CaseDeleted
+  CaseSoftban
+}
+
+fn athena_case_kind_decoder() -> decode.Decoder(AthenaCaseKind) {
+  use variant <- decode.then(decode.int)
+  case variant {
+    1 -> decode.success(CaseBan)
+    2 -> decode.success(CaseUnban)
+    3 -> decode.success(CaseNote)
+    4 -> decode.success(CaseWarn)
+    5 -> decode.success(CaseKick)
+    6 -> decode.success(CaseMute)
+    7 -> decode.success(CaseUnmute)
+    8 -> decode.success(CaseDeleted)
+    9 -> decode.success(CaseSoftban)
+    _ -> decode.failure(CaseBan, "AthenaCaseKind")
+  }
+}
+
+type AthenaCase {
+  AthenaCase(
+    id: Int,
+    case_number: Int,
+    mod_id: String,
+    actioned_user_id: String,
+    actioned_user_name: String,
+    created_at: timestamp.Timestamp,
+    kind: AthenaCaseKind,
+    notes: List(AthenaCaseNote),
+  )
+}
+
+fn athena_case_decoder() -> decode.Decoder(AthenaCase) {
+  use id <- decode.field("id", decode.int)
+  use case_number <- decode.field("case_number", decode.int)
+  use mod_id <- decode.field("mod_id", decode.string)
+  use actioned_user_id <- decode.field("actioned_user_id", decode.string)
+  use actioned_user_name <- decode.field("actioned_user_name", decode.string)
+  use created_at <- decode.field("created_at", timestamp_decoder())
+  use kind <- decode.field("type", athena_case_kind_decoder())
+  use notes <- decode.optional_field(
+    "notes",
+    [],
+    decode.list(athena_case_note_decoder()),
+  )
+  decode.success(AthenaCase(
+    id:,
+    case_number:,
+    mod_id:,
+    actioned_user_id:,
+    actioned_user_name:,
+    created_at:,
+    kind:,
+    notes:,
+  ))
+}
+
 type UserRole {
   AdminUser
   HelperUser
@@ -349,7 +426,7 @@ type Model {
     total_cases: Int,
     total_threads: Int,
     total_issues: Int,
-    cases: List(String),
+    cases: List(AthenaCase),
     // Interview stuff
     interview_questions: List(String),
     // Thread filtering
@@ -378,7 +455,7 @@ fn init(_) -> #(Model, Effect(Message)) {
 
         Ok(["cases", id] as path) ->
           case int.parse(id) {
-            Ok(id) -> Case(id)
+            Ok(id) -> Case(id, option.None)
             _ -> NotFound(path)
           }
 
@@ -441,6 +518,8 @@ type Message {
   ApiReturnedUser(Result(User, rsvp.Error(String)))
   ApiReturnedThreads(Result(List(ModmailThread), rsvp.Error(String)))
   ApiReturnedThread(Result(ModmailThread, rsvp.Error(String)))
+  ApiReturnedCases(Result(List(AthenaCase), rsvp.Error(String)))
+  ApiReturnedCase(Result(AthenaCase, rsvp.Error(String)))
   ApiReturnedIssues(Result(List(Issue), rsvp.Error(String)))
   ApiReturnedQuestions(Result(List(String), rsvp.Error(String)))
 
@@ -471,7 +550,7 @@ fn on_url_change(uri: uri.Uri) -> Message {
 
     ["cases", id] as path ->
       case int.parse(id) {
-        Ok(id) -> OnRouteChange(Case(id))
+        Ok(id) -> OnRouteChange(Case(id, option.None))
         _ -> OnRouteChange(NotFound(path))
       }
     path -> OnRouteChange(NotFound(path))
@@ -534,6 +613,20 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
     )
 
     ApiReturnedThread(Error(err)) -> #(model, rsvp_err_to_toast("thread", err))
+
+    ApiReturnedCases(Ok(cases)) -> #(Model(..model, cases:), effect.none())
+
+    ApiReturnedCases(Error(err)) -> #(model, rsvp_err_to_toast("cases", err))
+
+    ApiReturnedCase(Ok(athena_case)) -> #(
+      Model(
+        ..model,
+        route: Case(id: athena_case.id, content: option.Some(athena_case)),
+      ),
+      effect.none(),
+    )
+
+    ApiReturnedCase(Error(err)) -> #(model, rsvp_err_to_toast("case", err))
 
     ApiReturnedIssues(Ok(issues)) -> #(Model(..model, issues:), effect.none())
 
@@ -659,14 +752,15 @@ fn view(model: Model) -> Element(Message) {
 
       case model.route {
         Threads | Thread(..) -> threads_sidebar(model)
-        Cases | Case(_) -> cases_sidebar(model)
+        Cases | Case(..) -> cases_sidebar(model)
         _ -> element.none()
       },
 
       html.main(
         [
           class(case model.route {
-            Threads | Thread(..) | Cases | Case(_) -> "h-[100dvh] flex flex-col"
+            Threads | Thread(..) | Cases | Case(..) ->
+              "h-[100dvh] flex flex-col"
             _ -> "lg:col-span-2 h-[100dvh] flex flex-col"
           }),
         ],
@@ -687,7 +781,7 @@ fn view(model: Model) -> Element(Message) {
                   ) -> "Thread with " <> user_name
                   Thread(..) -> "Loading thread..."
                   Cases -> "Cases"
-                  Case(id:) -> "Case #" <> int.to_string(id)
+                  Case(id:, ..) -> "Case #" <> int.to_string(id)
                   Stats -> "Statistics"
                   Issues -> "Issues"
                   InterviewQuestions -> "Interview Questions"
@@ -755,7 +849,7 @@ fn view(model: Model) -> Element(Message) {
 
             Cases -> html.div([], [])
 
-            Case(_) -> html.div([], [])
+            Case(_, ..) -> html.div([], [])
 
             Stats -> stats_view(model)
 
@@ -908,7 +1002,7 @@ fn sidebar_link(model: Model, route: Route) {
 
     Cases -> #(icons.cases([]), "/cases", "Cases")
 
-    Case(id:) -> #(icons.inbox([]), "/case" <> int.to_string(id), "Case")
+    Case(id:, ..) -> #(icons.inbox([]), "/case" <> int.to_string(id), "Case")
 
     Stats -> #(icons.graph([]), "/stats", "Statistics")
 
@@ -925,6 +1019,7 @@ fn sidebar_link(model: Model, route: Route) {
 
   let active = case model.route, route {
     Threads, Threads | Thread(..), Threads -> True
+    Cases, Cases | Case(..), Cases -> True
     r1, r2 if r1 == r2 -> True
     _, _ -> False
   }
@@ -1170,18 +1265,32 @@ fn cases_sidebar(model: Model) {
       [class("grid gap-4 px-4")],
       list.map(model.cases, fn(mod_case) {
         #(
-          "issue#" <> mod_case,
+          "case#" <> int.to_string(mod_case.id),
           html.li([], [
             html.a(
               [
-                attribute.href("/cases/" <> mod_case),
+                attribute.href("/cases/" <> int.to_string(mod_case.id)),
                 class(
-                  "border border-gray-750 bg-gray-800 rounded border-l-3 border-l-case-blue py-2 px-3 grid gap-2",
+                  "border border-gray-750 bg-gray-800 rounded border-l-4 py-2 px-3 grid gap-2",
                 ),
               ],
               [
                 html.h3([class("font-bold text-white")], [
-                  html.text("Help me Obi Wan"),
+                  html.text(
+                    mod_case.actioned_user_name
+                    <> " - "
+                    <> case mod_case.kind {
+                      CaseBan -> "Ban"
+                      CaseUnban -> "Unban"
+                      CaseNote -> "Note"
+                      CaseWarn -> "Warn"
+                      CaseKick -> "Kick"
+                      CaseMute -> "Mute"
+                      CaseUnmute -> "Unmute"
+                      CaseDeleted -> "Deleted"
+                      CaseSoftban -> "Softban"
+                    },
+                  ),
                 ]),
                 html.p([], [
                   html.text("Or whatever"),
@@ -1696,6 +1805,17 @@ fn get_thread(id: String) -> Effect(Message) {
   rsvp.get(base_url <> "/api/threads/" <> id, handler)
 }
 
+fn get_cases() -> Effect(Message) {
+  let handler =
+    rsvp.expect_json(decode.list(athena_case_decoder()), ApiReturnedCases)
+  rsvp.get(base_url <> "/api/cases", handler)
+}
+
+fn get_case(id: Int) -> Effect(Message) {
+  let handler = rsvp.expect_json(athena_case_decoder(), ApiReturnedCase)
+  rsvp.get(base_url <> "/api/cases/" <> int.to_string(id), handler)
+}
+
 fn get_issues() -> Effect(Message) {
   let handler =
     rsvp.expect_json(decode.list(issue_decoder()), ApiReturnedIssues)
@@ -1711,7 +1831,7 @@ fn set_title(route: Route) -> Effect(Message) {
     Threads -> "Threads"
     Thread(id:, ..) -> "Thread #" <> id
     Cases -> "Cases"
-    Case(id:) -> "Case #" <> int.to_string(id)
+    Case(id:, ..) -> "Case #" <> int.to_string(id)
     Stats -> "Statistics"
     Issues -> "Issues"
     InterviewQuestions -> "Interview Questions"
@@ -1758,8 +1878,8 @@ fn route_effects(route: Route) -> Effect(Message) {
   let data_effects = case route {
     Threads -> [get_threads()]
     Thread(id:, content: option.None) -> [get_threads(), get_thread(id)]
-    Cases -> []
-    Case(_) -> []
+    Cases -> [get_cases()]
+    Case(id:, content: option.None) -> [get_cases(), get_case(id)]
     Stats -> []
     Issues -> [get_issues()]
     InterviewQuestions -> [

@@ -13,12 +13,13 @@ type Case struct {
 	ActionedUserName string     `db:"actioned_user_name" json:"actioned_user_name"`
 	CreatedAt        int        `db:"created_at" json:"created_at"`
 	Kind             int        `db:"type" json:"type"`
-	Notes            []CaseNote `db:"-" json:"notes"`
+	Notes            []CaseNote `db:"-" json:"notes,omitempty"`
 }
 
 type CaseNote struct {
 	ID        int    `db:"id" json:"id"`
 	CaseID    int    `db:"case_id" json:"case_id,omitempty"`
+	ModID     string `db:"mod_id" json:"mod_id"`
 	Body      string `db:"body" json:"body"`
 	CreatedAt int    `db:"created_at" json:"created_at"`
 }
@@ -41,7 +42,7 @@ func (db *DB) GetCaseByID(ctx context.Context, id int) (*Case, error) {
 	}
 
 	notes := []CaseNote{}
-	if err := db.conn.SelectContext(ctx, &notes, "SELECT id, body, UNIX_TIMESTAMP(created_at) created_at FROM case_notes WHERE case_id = ? ORDER BY created_at ASC", id); err != nil {
+	if err := db.conn.SelectContext(ctx, &notes, "SELECT id, body, mod_id, UNIX_TIMESTAMP(created_at) created_at FROM case_notes WHERE case_id = ? ORDER BY created_at ASC", id); err != nil {
 		return nil, fmt.Errorf("case(%d) notes: %v", id, err)
 	}
 

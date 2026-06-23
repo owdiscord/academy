@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS threads (
   id BINARY(16) PRIMARY KEY,
   -- 1 = open, 2 = closed, 3 = suspended.
   status INT NOT NULL DEFAULT 0,
+  wave_id INT REFERENCES waves(id),
   user_id VARCHAR(22) NOT NULL,
   user_name VARCHAR(128) NOT NULL,
   created_at TIMESTAMP NOT NULL,

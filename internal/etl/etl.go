@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/owdiscord/academy/internal/database"
 	"github.com/vinovest/sqlx"
 )
 
@@ -27,9 +28,29 @@ import (
 
 type Etl struct {
 	startDate time.Time
+	waveID    int
+	athDB     *sqlx.DB
 	mmDB      *sqlx.DB
 	outDB     *sqlx.DB
 }
+
+func New(wave *database.Wave, athenaDB *sqlx.DB, modmailDB *sqlx.DB, outDB *sqlx.DB) *Etl {
+	return &Etl{
+		startDate: wave.BeginAt,
+		waveID:    wave.ID,
+		athDB:     athenaDB,
+		mmDB:      modmailDB,
+		outDB:     outDB,
+	}
+}
+
+func (e *Etl) OutTx() (*sqlx.Tx, error) {
+	return e.outDB.Beginx()
+}
+
+//
+// # Threads
+//
 
 type ImportedThread struct {
 	ID               BinaryUUID `db:"id"`
@@ -54,10 +75,6 @@ type ImportedThreadMessage struct {
 	CreatedAt   time.Time  `db:"created_at"`
 	Attachments string     `db:"attachments"`
 	Metadata    string     `db:"metadata"`
-}
-
-func (e *Etl) OutTx() (*sqlx.Tx, error) {
-	return e.outDB.Beginx()
 }
 
 func (e *Etl) FindAllTraineeThreads(ctx context.Context, traineeIDs []string) ([]ImportedThread, error) {
@@ -104,15 +121,15 @@ func (e *Etl) FindThreadMessages(ctx context.Context, threadID string) ([]Import
 func (e *Etl) InsertImportedThread(ctx context.Context, tx *sqlx.Tx, thread ImportedThread) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO threads (
-			id, status, user_id, user_name, created_at, closed_by_id, roles, inbound_messages, outbound_messages, chat_messages
+			id, status, user_id, user_name, created_at, closed_by_id, roles, inbound_messages, outbound_messages, chat_messages, wave_id
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		) AS new_data
 		ON DUPLICATE KEY UPDATE
 			status       = new_data.status,
 			closed_by_id = new_data.closed_by_id`,
 		thread.ID, thread.Status, thread.UserID, thread.UserName,
-		thread.CreatedAt, thread.ClosedByID, thread.Roles, thread.InboundMessages, thread.OutboundMessages, thread.ChatMessages,
+		thread.CreatedAt, thread.ClosedByID, thread.Roles, thread.InboundMessages, thread.OutboundMessages, thread.ChatMessages, e.waveID,
 	)
 	if err != nil {
 		return fmt.Errorf("InsertImportedThread(%s): %w", thread.ID, err)
@@ -141,22 +158,118 @@ func (e *Etl) InsertThreadMessage(ctx context.Context, tx *sqlx.Tx, message Impo
 	return nil
 }
 
-// id BINARY(16) PRIMARY KEY,
-// -- 1 = open, 2 = closed, 3 = suspended.
-// status INT NOT NULL DEFAULT 0,
-// user_id VARCHAR(22) NOT NULL,
-// user_name VARCHAR(128) NOT NULL,
-// created_at TIMESTAMP NOT NULL,
-// imported_at TIMESTAMP NOT NULL DEFAULT NOW(),
-// closed_by_id VARCHAR(22) NOT NULL,
-// roles TEXT NOT NULL,
-// -- The following are stats that are calculated every time messages are imported.
-// inbound_messages INT DEFAULT 0,
-// outbound_messages INT DEFAULT 0,
-// chat_messages INT DEFAULT 0
+func (e *Etl) RecalculateThreadMessageCounts(ctx context.Context, tx *sqlx.Tx, threadID string) error {
+	_, err := tx.ExecContext(ctx, `
+        UPDATE threads t SET
+            inbound_messages  = (SELECT COUNT(*) FROM thread_messages WHERE thread_id = t.id AND kind = 1),
+            outbound_messages = (SELECT COUNT(*) FROM thread_messages WHERE thread_id = t.id AND kind = 2),
+            chat_messages     = (SELECT COUNT(*) FROM thread_messages WHERE thread_id = t.id AND kind = 3)
+        WHERE id = ?`,
+		threadID,
+	)
+	if err != nil {
+		return fmt.Errorf("RecalculateThreadMessageCounts(%s): %w", threadID, err)
+	}
+	return nil
+}
 
-// UUID type, neeed for scanning in and pushing out
+//
+// # Cases
+//
 
+type ImportedCase struct {
+	ID         uint      `db:"id"`
+	CaseNumber uint      `db:"case_number"`
+	UserID     uint64    `db:"user_id"`
+	UserName   string    `db:"user_name"`
+	ModID      *uint64   `db:"mod_id"`
+	Type       uint      `db:"type"`
+	CreatedAt  time.Time `db:"created_at"`
+	IsHidden   uint8     `db:"is_hidden"`
+}
+
+type ImportedCaseNote struct {
+	ID        uint      `db:"id"`
+	CaseID    uint      `db:"case_id"`
+	ModID     *uint64   `db:"mod_id"`
+	Body      string    `db:"body"`
+	CreatedAt time.Time `db:"created_at"`
+}
+
+func (e *Etl) FindAllTraineeCases(ctx context.Context, traineeIDs []string) ([]ImportedCase, error) {
+	query, args, err := sqlx.In(`
+        SELECT
+            id, case_number, user_id, user_name,
+            mod_id, type, created_at
+        FROM cases
+        WHERE mod_id IN (?)
+        AND created_at > ?`,
+		traineeIDs, e.startDate,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("building FindAllTraineeCases query: %w", err)
+	}
+	query = e.athDB.Rebind(query)
+
+	cases := []ImportedCase{}
+	if err := e.athDB.SelectContext(ctx, &cases, query, args...); err != nil {
+		return nil, fmt.Errorf("FindAllTraineeCases: %w", err)
+	}
+	return cases, nil
+}
+
+func (e *Etl) FindCaseNotes(ctx context.Context, caseID uint) ([]ImportedCaseNote, error) {
+	notes := []ImportedCaseNote{}
+	if err := e.athDB.SelectContext(ctx, &notes, `
+        SELECT id, case_id, mod_id, body, created_at
+        FROM case_notes
+        WHERE case_id = ?`,
+		caseID,
+	); err != nil {
+		return nil, fmt.Errorf("FindCaseNotes(%d): %w", caseID, err)
+	}
+	return notes, nil
+}
+
+func (e *Etl) InsertImportedCase(ctx context.Context, tx *sqlx.Tx, c ImportedCase) error {
+	_, err := tx.ExecContext(ctx, `
+        INSERT INTO cases (
+            id, case_number, actioned_user_id, actioned_user_name,
+            mod_id, type, created_at, wave_id
+        ) VALUES (
+            ?, ?, ?, ?,
+			?, ?, ?, ?
+        ) AS new_data
+        ON DUPLICATE KEY UPDATE
+            mod_id        = new_data.mod_id`,
+		c.ID, c.CaseNumber, c.UserID, c.UserName,
+		c.ModID, c.Type, c.CreatedAt, e.waveID,
+	)
+	if err != nil {
+		return fmt.Errorf("InsertImportedCase(%d): %w", c.ID, err)
+	}
+	return nil
+}
+
+func (e *Etl) InsertCaseNote(ctx context.Context, tx *sqlx.Tx, note ImportedCaseNote) error {
+	_, err := tx.ExecContext(ctx, `
+        INSERT INTO case_notes (
+            id, case_id, mod_id, body, created_at
+        ) VALUES (
+            ?, ?, ?, ?, ?
+        ) AS new_data
+        ON DUPLICATE KEY UPDATE
+            body     = new_data.body`,
+		note.ID, note.CaseID, note.ModID, note.Body, note.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("InsertCaseNote(%d): %w", note.ID, err)
+	}
+	return nil
+}
+
+// BinaryUUID type, neeed for scanning in and pushing out from the database, taking into account that
+// the existing Athena and ModMail databases store UUIDs as varchars, while we use BINARY(16).
 type BinaryUUID uuid.UUID
 
 // Value converts to BINARY(16) when writing to DB

@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS threads (
   imported_at TIMESTAMP NOT NULL DEFAULT NOW(),
   closed_by_id VARCHAR(22) NULL,
   roles TEXT NOT NULL,
+  participants TEXT NOT NULL,
   -- The following are stats that are calculated every time messages are imported. 
   inbound_messages INT DEFAULT 0,
   outbound_messages INT DEFAULT 0,
@@ -106,6 +107,8 @@ CREATE TABLE IF NOT EXISTS thread_messages (
   id INT AUTO_INCREMENT PRIMARY KEY,
   thread_id BINARY(16) REFERENCES threads(id),
   kind INT NOT NULL DEFAULT 0,
+  anonymous BOOLEAN NOT NULL DEFAULT FALSE,
+  role VARCHAR(64) NOT NULL DEFAULT 'system',
   user_id VARCHAR(22) NOT NULL,
   user_name VARCHAR(128) NOT NULL,
   body TEXT,

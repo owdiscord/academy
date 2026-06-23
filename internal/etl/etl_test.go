@@ -71,7 +71,7 @@ func TestImportModmail(t *testing.T) {
 			}
 		}
 
-		if err := e.RecalculateThreadMessageCounts(t.Context(), tx, thread.ID.String()); err != nil {
+		if err := e.RecalculateThreadMessageCounts(t.Context(), tx, thread.ID); err != nil {
 			t.Fatalf("could not recalculate thread message counts: %v", err)
 		}
 	}

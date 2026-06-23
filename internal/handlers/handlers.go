@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 	"github.com/owdiscord/academy/internal/cache"
 	"github.com/owdiscord/academy/internal/config"
@@ -147,11 +148,28 @@ func (h *Handlers) Wave(c *echo.Context) error {
 }
 
 func (h *Handlers) Threads(c *echo.Context) error {
-	return c.JSON(http.StatusOK, []string{})
+	threads, err := h.db.GetAllThreads(c.Request().Context())
+	if err != nil {
+		c.Logger().Error("could not get threads", "db", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve threads"})
+	}
+
+	return c.JSON(http.StatusOK, threads)
 }
 
 func (h *Handlers) Thread(c *echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]string{})
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "given ID was not a valid UUID"})
+	}
+
+	thread, err := h.db.GetThreadByID(c.Request().Context(), database.BinaryUUID(id))
+	if err != nil {
+		c.Logger().Error("could not get thread", "id", id, "db", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve thread"})
+	}
+
+	return c.JSON(http.StatusOK, thread)
 }
 
 func (h *Handlers) Cases(c *echo.Context) error {

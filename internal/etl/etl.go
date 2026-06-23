@@ -3,11 +3,9 @@ package etl
 
 import (
 	"context"
-	"database/sql/driver"
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/owdiscord/academy/internal/database"
 	"github.com/vinovest/sqlx"
 )
@@ -53,34 +51,36 @@ func (e *Etl) OutTx() (*sqlx.Tx, error) {
 //
 
 type ImportedThread struct {
-	ID               BinaryUUID `db:"id"`
-	Status           int        `db:"status"`
-	UserID           string     `db:"user_id"`
-	UserName         string     `db:"user_name"`
-	Roles            string     `db:"roles"`
-	CreatedAt        time.Time  `db:"created_at"`
-	ClosedByID       *string    `db:"closed_by_id"`
-	InboundMessages  int        `db:"inbound_messages"`
-	OutboundMessages int        `db:"outbound_messages"`
-	ChatMessages     int        `db:"chat_messages"`
+	ID               database.BinaryUUID `db:"id"`
+	Status           int                 `db:"status"`
+	UserID           string              `db:"user_id"`
+	UserName         string              `db:"user_name"`
+	Roles            string              `db:"roles"`
+	CreatedAt        time.Time           `db:"created_at"`
+	ClosedByID       *string             `db:"closed_by_id"`
+	InboundMessages  int                 `db:"inbound_messages"`
+	OutboundMessages int                 `db:"outbound_messages"`
+	ChatMessages     int                 `db:"chat_messages"`
 }
 
 type ImportedThreadMessage struct {
-	ID          int        `db:"id"`
-	ThreadID    BinaryUUID `db:"thread_id"`
-	Kind        int        `db:"kind"`
-	UserID      string     `db:"user_id"`
-	UserName    string     `db:"user_name"`
-	Body        string     `db:"body"`
-	CreatedAt   time.Time  `db:"created_at"`
-	Attachments string     `db:"attachments"`
-	Metadata    string     `db:"metadata"`
+	ID          int                 `db:"id"`
+	ThreadID    database.BinaryUUID `db:"thread_id"`
+	Kind        int                 `db:"kind"`
+	Role        string              `db:"role_name"`
+	Anonymous   bool                `db:"is_anonymous"`
+	UserID      string              `db:"user_id"`
+	UserName    string              `db:"user_name"`
+	Body        string              `db:"body"`
+	CreatedAt   time.Time           `db:"created_at"`
+	Attachments string              `db:"attachments"`
+	Metadata    string              `db:"metadata"`
 }
 
 func (e *Etl) FindAllTraineeThreads(ctx context.Context, traineeIDs []string) ([]ImportedThread, error) {
 	query, args, err := sqlx.In(`
 		SELECT
-			t.id, t.status, t.user_id, t.user_name, coalesce(t.roles, '') roles, t.created_at, t.closed_by_id,
+			t.id, t.status, t.user_id, t.user_name, coalesce(t.roles, '[]') roles, t.created_at, t.closed_by_id,
 			COUNT(CASE WHEN tm.message_type = 3 THEN 1 END) AS inbound_messages,
 			COUNT(CASE WHEN tm.message_type = 4 THEN 1 END) AS outbound_messages,
 			COUNT(CASE WHEN tm.message_type = 2 THEN 1 END) AS chat_messages
@@ -107,7 +107,7 @@ func (e *Etl) FindThreadMessages(ctx context.Context, threadID string) ([]Import
 	messages := []ImportedThreadMessage{}
 	if err := e.mmDB.SelectContext(ctx, &messages, `
 		SELECT id, thread_id, message_type AS kind, user_id, user_name,
-		       body, created_at, attachments, metadata
+		       body, created_at, attachments, metadata, is_anonymous, role_name
 		FROM thread_messages
 		WHERE thread_id = ?
 		ORDER BY created_at ASC`,
@@ -121,9 +121,9 @@ func (e *Etl) FindThreadMessages(ctx context.Context, threadID string) ([]Import
 func (e *Etl) InsertImportedThread(ctx context.Context, tx *sqlx.Tx, thread ImportedThread) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO threads (
-			id, status, user_id, user_name, created_at, closed_by_id, roles, inbound_messages, outbound_messages, chat_messages, wave_id
+			id, status, user_id, user_name, created_at, closed_by_id, roles, inbound_messages, outbound_messages, chat_messages, wave_id, participants
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]'
 		) AS new_data
 		ON DUPLICATE KEY UPDATE
 			status       = new_data.status,
@@ -140,9 +140,9 @@ func (e *Etl) InsertImportedThread(ctx context.Context, tx *sqlx.Tx, thread Impo
 func (e *Etl) InsertThreadMessage(ctx context.Context, tx *sqlx.Tx, message ImportedThreadMessage) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO thread_messages (
-			id, thread_id, kind, user_id, user_name, body, created_at, attachments, metadata
+			id, thread_id, kind, user_id, user_name, body, created_at, attachments, metadata, anonymous, role
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		) AS new_data
 		ON DUPLICATE KEY UPDATE
 			body        = new_data.body,
@@ -150,7 +150,7 @@ func (e *Etl) InsertThreadMessage(ctx context.Context, tx *sqlx.Tx, message Impo
 			metadata    = new_data.metadata`,
 		message.ID, message.ThreadID, message.Kind, message.UserID,
 		message.UserName, message.Body, message.CreatedAt,
-		message.Attachments, message.Metadata,
+		message.Attachments, message.Metadata, message.Anonymous, message.Role,
 	)
 	if err != nil {
 		return fmt.Errorf("InsertThreadMessage(%d): %w", message.ID, err)
@@ -158,14 +158,15 @@ func (e *Etl) InsertThreadMessage(ctx context.Context, tx *sqlx.Tx, message Impo
 	return nil
 }
 
-func (e *Etl) RecalculateThreadMessageCounts(ctx context.Context, tx *sqlx.Tx, threadID string) error {
+func (e *Etl) RecalculateThreadMessageCounts(ctx context.Context, tx *sqlx.Tx, threadID database.BinaryUUID) error {
 	_, err := tx.ExecContext(ctx, `
-        UPDATE threads t SET
-            inbound_messages  = (SELECT COUNT(*) FROM thread_messages WHERE thread_id = t.id AND kind = 1),
-            outbound_messages = (SELECT COUNT(*) FROM thread_messages WHERE thread_id = t.id AND kind = 2),
-            chat_messages     = (SELECT COUNT(*) FROM thread_messages WHERE thread_id = t.id AND kind = 3)
-        WHERE id = ?`,
-		threadID,
+    UPDATE threads t SET
+        participants      = COALESCE((SELECT JSON_ARRAYAGG(user_id) FROM (SELECT DISTINCT user_id FROM thread_messages WHERE thread_id = ? AND kind IN (2, 3)) AS u), '[]'),
+        inbound_messages  = (SELECT COUNT(*) FROM thread_messages WHERE thread_id = t.id AND kind = 1),
+        outbound_messages = (SELECT COUNT(*) FROM thread_messages WHERE thread_id = t.id AND kind = 2),
+        chat_messages     = (SELECT COUNT(*) FROM thread_messages WHERE thread_id = t.id AND kind = 3)
+    WHERE id = ?`,
+		threadID, threadID,
 	)
 	if err != nil {
 		return fmt.Errorf("RecalculateThreadMessageCounts(%s): %w", threadID, err)
@@ -266,48 +267,4 @@ func (e *Etl) InsertCaseNote(ctx context.Context, tx *sqlx.Tx, note ImportedCase
 		return fmt.Errorf("InsertCaseNote(%d): %w", note.ID, err)
 	}
 	return nil
-}
-
-// BinaryUUID type, neeed for scanning in and pushing out from the database, taking into account that
-// the existing Athena and ModMail databases store UUIDs as varchars, while we use BINARY(16).
-type BinaryUUID uuid.UUID
-
-// Value converts to BINARY(16) when writing to DB
-func (b BinaryUUID) Value() (driver.Value, error) {
-	return uuid.UUID(b).MarshalBinary()
-}
-
-// Scan converts from BINARY(16) when reading from DB
-func (b *BinaryUUID) Scan(src any) error {
-	switch v := src.(type) {
-	case []byte:
-		if len(v) == 16 {
-			// Already binary
-			parsed, err := uuid.FromBytes(v)
-			if err != nil {
-				return fmt.Errorf("BinaryUUID: %w", err)
-			}
-			*b = BinaryUUID(parsed)
-		} else {
-			// VARCHAR coming back as []byte
-			parsed, err := uuid.ParseBytes(v)
-			if err != nil {
-				return fmt.Errorf("BinaryUUID: %w", err)
-			}
-			*b = BinaryUUID(parsed)
-		}
-	case string:
-		parsed, err := uuid.Parse(v)
-		if err != nil {
-			return fmt.Errorf("BinaryUUID: %w", err)
-		}
-		*b = BinaryUUID(parsed)
-	default:
-		return fmt.Errorf("BinaryUUID: expected []byte or string, got %T", src)
-	}
-	return nil
-}
-
-func (b BinaryUUID) String() string {
-	return uuid.UUID(b).String()
 }

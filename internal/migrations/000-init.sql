@@ -90,23 +90,6 @@ CREATE TABLE IF NOT EXISTS threads (
   -- 1 = open, 2 = closed, 3 = suspended.
   status INT NOT NULL DEFAULT 0,
   user_id VARCHAR(22) NOT NULL,
-  user_nme VARCHAR(128) NOT NULL,
-  created_at TIMESTAMP NOT NULL,
-  imported_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  closed_by_id VARCHAR(22) NOT NULL,
-  roles TEXT NOT NULL,
-  -- The following are stats that are calculated every time messages are imported. 
-  inbound_messages INT DEFAULT 0,
-  outbound_messages INT DEFAULT 0,
-  chat_messages INT DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS thread_messages (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  thread_id BINARY(16) REFERENCES threads(id),
-  -- 1 = open, 2 = closed, 3 = suspended.
-  status INT NOT NULL DEFAULT 0,
-  user_id VARCHAR(22) NOT NULL,
   user_name VARCHAR(128) NOT NULL,
   created_at TIMESTAMP NOT NULL,
   imported_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -118,9 +101,22 @@ CREATE TABLE IF NOT EXISTS thread_messages (
   chat_messages INT DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS thread_messages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  thread_id BINARY(16) REFERENCES threads(id),
+  kind INT NOT NULL DEFAULT 0,
+  user_id VARCHAR(22) NOT NULL,
+  user_name VARCHAR(128) NOT NULL,
+  body TEXT,
+  created_at TIMESTAMP NOT NULL,
+  imported_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  attachments TEXT,
+  metadata TEXT
+);
+
 CREATE TABLE IF NOT EXISTS cases (
-  -- Externally known as "case number" in Athena
   id INT PRIMARY KEY,
+  case_number INT NOT NULL,
   actioned_user_id VARCHAR(22) NOT NULL,
   actioned_user_name VARCHAR(128) NOT NULL,
   wave_id INT REFERENCES waves(id),

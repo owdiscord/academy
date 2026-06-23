@@ -198,22 +198,22 @@ fn message_kind_decoder() -> decode.Decoder(ThreadMsgKind) {
 
 fn thread_msg_decoder() -> decode.Decoder(ThreadMsg) {
   use id <- decode.field("id", decode.int)
-  use kind <- decode.field("message_type", message_kind_decoder())
-  use role <- decode.field(
-    "role_name",
-    decode.map(decode.string, fn(role) {
-      case role {
-        "admin" -> AdminRole
-        "helper" -> HelperRole
-        "mod" | "moderator" -> ModRole
-        "trainee" -> TraineeRole
-        _ -> SystemRole
-      }
-    }),
-  )
+  use kind <- decode.field("kind", message_kind_decoder())
   use anonymous <- decode.field(
     "anonymous",
     decode.one_of(decode.map(decode.int, int.is_odd), [decode.bool]),
+  )
+  use role <- decode.field(
+    "role",
+    decode.then(decode.string, fn(str) {
+      case string.lowercase(str) {
+        "admin" -> AdminRole
+        "helper" -> HelperRole
+        "moderator" | "mod" -> ModRole
+        _ -> SystemRole
+      }
+      |> decode.success
+    }),
   )
   use user_id <- decode.field("user_id", decode.string)
   use user_name <- decode.field("user_name", decode.string)
@@ -241,11 +241,11 @@ type ThreadStatus {
 }
 
 fn thread_status_decoder() -> decode.Decoder(ThreadStatus) {
-  use variant <- decode.then(decode.string)
+  use variant <- decode.then(decode.int)
   case variant {
-    "open" -> decode.success(ThreadOpen)
-    "closed" -> decode.success(ThreadClosed)
-    "suspended" -> decode.success(ThreadSuspended)
+    1 -> decode.success(ThreadOpen)
+    2 -> decode.success(ThreadClosed)
+    3 -> decode.success(ThreadSuspended)
     _ -> decode.failure(ThreadOpen, "ThreadStatus")
   }
 }
@@ -256,10 +256,10 @@ type ModmailThread {
     user_name: String,
     user_id: String,
     status: ThreadStatus,
-    user_messages: Int,
-    reply_messages: Int,
-    internal_messages: Int,
-    staff_ids: List(String),
+    inbound_messages: Int,
+    outbound_messages: Int,
+    chat_messages: Int,
+    participants: List(String),
     messages: List(ThreadMsg),
   )
 }
@@ -269,10 +269,10 @@ fn modmail_thread_decoder() -> decode.Decoder(ModmailThread) {
   use user_name <- decode.field("user_name", decode.string)
   use user_id <- decode.field("user_id", decode.string)
   use status <- decode.field("status", thread_status_decoder())
-  use user_messages <- decode.field("user_messages", decode.int)
-  use reply_messages <- decode.field("reply_messages", decode.int)
-  use internal_messages <- decode.field("internal_messages", decode.int)
-  use staff_ids <- decode.field("staff_ids", decode.list(decode.string))
+  use inbound_messages <- decode.field("inbound_messages", decode.int)
+  use outbound_messages <- decode.field("outbound_messages", decode.int)
+  use chat_messages <- decode.field("chat_messages", decode.int)
+  use participants <- decode.field("participants", decode.list(decode.string))
   use messages <- decode.optional_field(
     "messages",
     [],
@@ -284,10 +284,10 @@ fn modmail_thread_decoder() -> decode.Decoder(ModmailThread) {
     user_name:,
     user_id:,
     status:,
-    user_messages:,
-    reply_messages:,
-    internal_messages:,
-    staff_ids:,
+    inbound_messages:,
+    outbound_messages:,
+    chat_messages:,
+    participants:,
     messages:,
   ))
 }
@@ -1061,7 +1061,7 @@ fn threads_sidebar(model: Model) {
                           ],
                           [
                             icons.arrow_in([class("size-5 text-gray-400")]),
-                            html.text(int.to_string(thread.user_messages)),
+                            html.text(int.to_string(thread.inbound_messages)),
                           ],
                         ),
                         html.dd(
@@ -1073,7 +1073,7 @@ fn threads_sidebar(model: Model) {
                             icons.arrow_out([
                               class("size-5 text-gray-400"),
                             ]),
-                            html.text(int.to_string(thread.reply_messages)),
+                            html.text(int.to_string(thread.outbound_messages)),
                           ],
                         ),
                         html.dd(
@@ -1085,13 +1085,13 @@ fn threads_sidebar(model: Model) {
                             icons.message_bubbles([
                               class("size-5 text-gray-400"),
                             ]),
-                            html.text(int.to_string(thread.internal_messages)),
+                            html.text(int.to_string(thread.chat_messages)),
                           ],
                         ),
                         html.dt([class("ml-auto")], [
                           html.div(
                             [class("flex")],
-                            list.map(thread.staff_ids, fn(snowflake) {
+                            list.map(thread.participants, fn(snowflake) {
                               html.img([
                                 attribute.src(avatar(snowflake)),
                                 class(

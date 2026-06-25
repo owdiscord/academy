@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS issues (
   id INT AUTO_INCREMENT PRIMARY KEY,
   wave_id INT REFERENCES waves(id),
   created_by VARCHAR(22) REFERENCES staff(snowflake),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   staff_id VARCHAR(22) REFERENCES staff(snowflake),
   thread_id VARCHAR(36) NULL DEFAULT NULL,
   message_id VARCHAR(36) NULL DEFAULT NULL,
@@ -61,8 +63,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE TABLE IF NOT EXISTS stats_per_date (
   id INT AUTO_INCREMENT,
-  date TIMESTAMP NOT NULL DEFAULT now(),
-  staff_id INT REFERENCES staff(id),
+  date DATE NOT NULL DEFAULT (CURRENT_DATE),
+  user_id INT REFERENCES staff(id),
   wave_id INT REFERENCES waves(id),
   public_messages INT DEFAULT 0,
   private_messages INT DEFAULT 0,
@@ -72,7 +74,8 @@ CREATE TABLE IF NOT EXISTS stats_per_date (
   thread_closures INT DEFAULT 0,
   snippets_used INT DEFAULT 0,
 
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_staff_date (staff_id, date)
 );
 
 CREATE TABLE IF NOT EXISTS collection_log (

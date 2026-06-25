@@ -7,33 +7,47 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/joho/godotenv"
+	"github.com/owdiscord/academy/internal/config"
 	"github.com/vinovest/sqlx"
 )
 
 var e *Etl
 
 func TestMain(m *testing.M) {
-	out, err := sqlx.Connect("mysql", "academy:academypass@tcp(localhost:3306)/academy?parseTime=true")
+	// Load from dotenv so I can stay lazy for test running
+	_ = godotenv.Load()
+	config, err := config.Load()
 	if err != nil {
-		log.Fatalf("could not connect to out database: %v", err)
+		log.Fatalf("could not load config: %v", err)
 	}
-	mm, err := sqlx.Connect("mysql", "modmail:modmailbot@tcp(localhost:3306)/modmail2?parseTime=true")
+
+	out, err := sqlx.Connect("mysql", config.DatabaseURI)
+	if err != nil {
+		log.Fatalf("could not connect to out database: %s, %v", config.DatabaseURI, err)
+	}
+
+	// Only used for testing so we hard-code this value.
+	mockDB, err := sqlx.Connect("mysql", "modmail:modmailbot@tcp(localhost:3306)/modmail2?parseTime=true")
 	if err != nil {
 		log.Fatalf("could not connect to modmail database: %v", err)
 	}
 
 	start := time.Date(2020, time.January, 1, 1, 1, 1, 1, time.UTC)
 	e = &Etl{
-		startDate: start,
-		waveID:    67,
-		mmDB:      mm,
-		athDB:     mm,
-		outDB:     out,
+		startDate:       start,
+		waveID:          67,
+		mmDB:            mockDB,
+		athDB:           mockDB,
+		outDB:           out,
+		trainees:        []string{"204084691425427466"},
+		privateChannels: config.PrivateChannels,
 	}
 
 	out.MustExec("DELETE FROM case_notes;")
 	out.MustExec("DELETE FROM cases;")
 	out.MustExec("DELETE FROM thread_messages;")
+	out.MustExec("DELETE FROM threads;")
 	out.MustExec("DELETE FROM threads;")
 
 	exitCode := m.Run()
@@ -41,7 +55,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestImportModmail(t *testing.T) {
-	threads, err := e.FindAllTraineeThreads(t.Context(), []string{"204084691425427466"})
+	threads, err := e.FindAllTraineeThreads(t.Context())
 	if err != nil {
 		t.Fatalf("could not get trainee threads from modmail database: %v", err)
 	}
@@ -82,7 +96,7 @@ func TestImportModmail(t *testing.T) {
 }
 
 func TestImportAthena(t *testing.T) {
-	cases, err := e.FindAllTraineeCases(t.Context(), []string{"204084691425427466"})
+	cases, err := e.FindAllTraineeCases(t.Context())
 	if err != nil {
 		t.Fatalf("could not get trainee cases from athena database: %v", err)
 	}
@@ -116,4 +130,24 @@ func TestImportAthena(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("could not commit transaction: %v", err)
 	}
+}
+
+func TestImportMessageStats(t *testing.T) {
+	tx, err := e.OutTx()
+	if err != nil {
+		t.Fatalf("could not start transaction: %v", err)
+	}
+
+	stats, err := e.GetMessageStats(t.Context(), tx)
+	if err != nil {
+		t.Fatalf("could not get stats: %v", err)
+	}
+
+	for _, entry := range stats {
+		t.Log(entry)
+	}
+
+	// if err := tx.Commit(); err != nil {
+	// 	t.Fatalf("could not commit transaction: %v", err)
+	// }
 }

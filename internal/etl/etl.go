@@ -4,6 +4,7 @@ package etl
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/owdiscord/academy/internal/database"
@@ -25,11 +26,13 @@ import (
 // one that can be repeated
 
 type Etl struct {
-	startDate time.Time
-	waveID    int
-	athDB     *sqlx.DB
-	mmDB      *sqlx.DB
-	outDB     *sqlx.DB
+	startDate       time.Time
+	waveID          int
+	trainees        []string
+	privateChannels []string
+	athDB           *sqlx.DB
+	mmDB            *sqlx.DB
+	outDB           *sqlx.DB
 }
 
 func New(wave *database.Wave, athenaDB *sqlx.DB, modmailDB *sqlx.DB, outDB *sqlx.DB) *Etl {
@@ -77,7 +80,7 @@ type ImportedThreadMessage struct {
 	Metadata    string              `db:"metadata"`
 }
 
-func (e *Etl) FindAllTraineeThreads(ctx context.Context, traineeIDs []string) ([]ImportedThread, error) {
+func (e *Etl) FindAllTraineeThreads(ctx context.Context) ([]ImportedThread, error) {
 	query, args, err := sqlx.In(`
 		SELECT
 			t.id, t.status, t.user_id, t.user_name, coalesce(t.roles, '[]') roles, t.created_at, t.closed_by_id,
@@ -89,7 +92,7 @@ func (e *Etl) FindAllTraineeThreads(ctx context.Context, traineeIDs []string) ([
 		WHERE tm.user_id IN (?)
 		AND (t.created_at > ? OR t.updated_at > ?)
 		GROUP BY t.id, t.status, t.user_id, t.user_name, t.roles, t.created_at, t.closed_by_id`,
-		traineeIDs, e.startDate, e.startDate,
+		e.trainees, e.startDate, e.startDate,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("building FindAllTraineeThreads query: %w", err)
@@ -197,7 +200,7 @@ type ImportedCaseNote struct {
 	CreatedAt time.Time `db:"created_at"`
 }
 
-func (e *Etl) FindAllTraineeCases(ctx context.Context, traineeIDs []string) ([]ImportedCase, error) {
+func (e *Etl) FindAllTraineeCases(ctx context.Context) ([]ImportedCase, error) {
 	query, args, err := sqlx.In(`
         SELECT
             id, case_number, user_id, user_name,
@@ -205,7 +208,7 @@ func (e *Etl) FindAllTraineeCases(ctx context.Context, traineeIDs []string) ([]I
         FROM cases
         WHERE mod_id IN (?)
         AND created_at > ?`,
-		traineeIDs, e.startDate,
+		e.trainees, e.startDate,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("building FindAllTraineeCases query: %w", err)
@@ -267,4 +270,68 @@ func (e *Etl) InsertCaseNote(ctx context.Context, tx *sqlx.Tx, note ImportedCase
 		return fmt.Errorf("InsertCaseNote(%d): %w", note.ID, err)
 	}
 	return nil
+}
+
+//
+// # Message stats
+//
+
+type MessageStat struct {
+	UserID  string `db:"user_id"`
+	Private int    `db:"private_messages"`
+	Public  int    `db:"public_messages"`
+}
+
+func (e *Etl) GetMessageStats(ctx context.Context, tx *sqlx.Tx) ([]MessageStat, error) {
+	chanIDs := strings.Join(e.privateChannels, ", ")
+	userIDs := strings.Join(e.trainees, ", ")
+
+	stats := []MessageStat{}
+
+	// You may think it's bad form to concatenate strings for a query.
+	// You would be 100% correct, but I'm gonna save myself a heck of a lot of time by doing this lol
+	if err := e.athDB.SelectContext(ctx, &stats, `
+SELECT
+    user_id,
+    SUM(CASE WHEN channel_id IN (`+chanIDs+`) THEN 1 ELSE 0 END) AS private_messages,
+    SUM(CASE WHEN channel_id NOT IN (`+chanIDs+`) THEN 1 ELSE 0 END) AS public_messages
+FROM messages
+WHERE posted_at > ? 
+	AND user_id IN (`+userIDs+`)
+  AND is_bot = 0
+GROUP BY user_id`, e.startDate); err != nil {
+		return nil, err
+	}
+
+	return stats, nil
+}
+
+type DateStatParams struct {
+	WaveID         int
+	UserID         int
+	PublicMsgs     int
+	PrivateMsgs    int
+	Cases          int
+	ThreadChat     int
+	ThreadReplies  int
+	ThreadClosures int
+	SnippetsUsed   int
+}
+
+func (e *Etl) SetDateStatsForUser(ctx context.Context, tx *sqlx.Tx, params DateStatParams) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO stats_per_date
+  (date, user_id, wave_id, public_messages, private_messages, cases, thread_chat, thread_replies, thread_closures, snippets_used)
+VALUES
+  (CURRENT_DATE, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+  wave_id            = VALUES(wave_id),
+  public_messages    = public_messages    + VALUES(public_messages),
+  private_messages   = private_messages   + VALUES(private_messages),
+  cases              = cases              + VALUES(cases),
+  thread_chat        = thread_chat        + VALUES(thread_chat),
+  thread_replies     = thread_replies     + VALUES(thread_replies),
+  thread_closures    = thread_closures    + VALUES(thread_closures),
+  snippets_used      = snippets_used      + VALUES(snippets_used)`, params.UserID, params.WaveID, params.PublicMsgs, params.PrivateMsgs, params.Cases, params.ThreadChat, params.ThreadReplies, params.ThreadClosures, params.SnippetsUsed)
+
+	return err
 }

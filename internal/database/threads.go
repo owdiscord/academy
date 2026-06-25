@@ -2,6 +2,8 @@ package database
 
 import (
 	"context"
+
+	"github.com/owdiscord/academy/internal/formatting"
 )
 
 type Thread struct {
@@ -56,6 +58,10 @@ func (db *DB) GetThreadByID(ctx context.Context, id BinaryUUID) (*Thread, error)
 		return nil, err
 	}
 
+	for _, msg := range messages {
+		msg.Body = string(formatting.MDtoHTML([]byte(msg.Body)))
+		thread.Messages = append(thread.Messages, msg)
+	}
 	thread.Messages = messages
 
 	return &thread, nil

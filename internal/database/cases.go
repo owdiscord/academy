@@ -3,6 +3,8 @@ package database
 import (
 	"context"
 	"fmt"
+
+	"github.com/owdiscord/academy/internal/formatting"
 )
 
 type Case struct {
@@ -46,7 +48,11 @@ func (db *DB) GetCaseByID(ctx context.Context, id int) (*Case, error) {
 		return nil, fmt.Errorf("case(%d) notes: %v", id, err)
 	}
 
-	modCase.Notes = notes
+	for _, note := range notes {
+		note.Body = string(formatting.MDtoHTML([]byte(note.Body)))
+
+		modCase.Notes = append(modCase.Notes, note)
+	}
 
 	return &modCase, nil
 }

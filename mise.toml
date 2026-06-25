@@ -3,7 +3,7 @@ go = "1.25.7"
 
 [env]
 _.file = { path = ".env" }
-DATABASE_URI = "mysql://academy:academypass@localhost:3306/academy"
+DATABASE_URI = "academy:academypass@tcp(localhost:3306)/academy"
 THEME_DIR="../templates"
 
 [vars]
@@ -27,11 +27,11 @@ description = "Remove build artifacts"
 run = "rm -rf bin/"
 
 [tasks."migrate:down"]
-env = { DATABASE_URL = "mysql://academy:academypass@localhost:3306/academy" }
+env = { DATABASE_URL = "academy:academypass@tcp(localhost:3306)/academy" }
 description = "Down all migrations with dbmate"
 run = "dbmate -d './internal/migrations' down"
 
 [tasks."migrate:up"]
-env = { DATABASE_URL = "mysql://academy:academypass@localhost:3306/academy" }
+env = { DATABASE_URL = "academy:academypass@tcp(localhost:3306)/academy" }
 description = "Run all migrations with dbmate"
 run = "dbmate -d './internal/migrations' up"

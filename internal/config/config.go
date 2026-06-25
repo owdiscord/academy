@@ -5,16 +5,18 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 )
 
 type Config struct {
-	DatabaseURI  string `env:"DATABASE_URI"`
-	AthenaDBURI  string `env:"ATHENA_DB_URI"`
-	ModmailDBURI string `env:"MODMAIL_DB_URI"`
-	BotToken     string `env:"DISCORD_BOT_TOKEN"`
-	ClientID     string `env:"DISCORD_CLIENT_ID"`
-	ClientSecret string `env:"DISCORD_CLIENT_SECRET"`
-	RedirectURI  string `env:"DISCORD_REDIRECT_URI"`
+	DatabaseURI     string   `env:"DATABASE_URI"`
+	AthenaDBURI     string   `env:"ATHENA_DB_URI"`
+	ModmailDBURI    string   `env:"MODMAIL_DB_URI"`
+	BotToken        string   `env:"DISCORD_BOT_TOKEN"`
+	ClientID        string   `env:"DISCORD_CLIENT_ID"`
+	ClientSecret    string   `env:"DISCORD_CLIENT_SECRET"`
+	RedirectURI     string   `env:"DISCORD_REDIRECT_URI"`
+	PrivateChannels []string `env:"PRIVATE_CHANNELS"`
 }
 
 func Load() (*Config, error) {
@@ -48,6 +50,17 @@ func Load() (*Config, error) {
 		switch fieldVal.Kind() {
 		case reflect.String:
 			fieldVal.SetString(envVal)
+		case reflect.Slice:
+			switch fieldVal.Type().Elem().Kind() {
+			case reflect.String:
+				parts := strings.Split(envVal, ",")
+				for i, p := range parts {
+					parts[i] = strings.TrimSpace(p)
+				}
+				fieldVal.Set(reflect.ValueOf(parts))
+			default:
+				return nil, fmt.Errorf("unsupported slice element type %s for %s", fieldVal.Type().Elem().Kind(), field.Name)
+			}
 		default:
 			return nil, fmt.Errorf("unsupported field type %s for %s", fieldVal.Kind(), field.Name)
 		}

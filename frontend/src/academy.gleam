@@ -849,7 +849,25 @@ fn view(model: Model) -> Element(Message) {
 
             Cases -> html.div([], [])
 
-            Case(_, ..) -> html.div([], [])
+            Case(id:, content: option.None) ->
+              html.div([class("p-6")], [
+                html.div(
+                  [
+                    attribute.role("alert"),
+                    class(
+                      "bg-info-bg border border-info-fg text-white p-3 rounded-md",
+                    ),
+                  ],
+                  [
+                    html.p([], [
+                      html.text("Loading case..."),
+                    ]),
+                  ],
+                ),
+              ])
+
+            Case(content: option.Some(mod_case), ..) ->
+              case_view(model, mod_case)
 
             Stats -> stats_view(model)
 
@@ -1262,7 +1280,7 @@ fn cases_sidebar(model: Model) {
     ]),
 
     keyed.ul(
-      [class("grid gap-4 px-4")],
+      [class("grid gap-2 px-4 overflow-y-auto flex-1 pb-6")],
       list.map(model.cases, fn(mod_case) {
         #(
           "case#" <> int.to_string(mod_case.id),
@@ -1271,62 +1289,50 @@ fn cases_sidebar(model: Model) {
               [
                 attribute.href("/cases/" <> int.to_string(mod_case.id)),
                 class(
-                  "border border-gray-750 bg-gray-800 rounded border-l-4 py-2 px-3 grid gap-2",
+                  "border border-gray-750 bg-gray-800 rounded border-l-4 py-2 px-4 grid gap-2 "
+                  <> case mod_case.kind {
+                    CaseBan -> "border-l-case-ban"
+                    CaseUnban -> "border-l-case-unban"
+                    CaseNote -> "border-l-case-note"
+                    CaseWarn -> "border-l-case-warn"
+                    CaseKick -> "border-l-case-kick"
+                    CaseMute -> "border-l-case-mute"
+                    CaseUnmute -> "border-l-case-unmute"
+                    CaseDeleted -> "border-l-case-deleted"
+                    CaseSoftban -> "border-l-case-softban"
+                  },
                 ),
               ],
               [
-                html.h3([class("font-bold text-white")], [
-                  html.text(
-                    mod_case.actioned_user_name
-                    <> " - "
-                    <> case mod_case.kind {
-                      CaseBan -> "Ban"
-                      CaseUnban -> "Unban"
-                      CaseNote -> "Note"
-                      CaseWarn -> "Warn"
-                      CaseKick -> "Kick"
-                      CaseMute -> "Mute"
-                      CaseUnmute -> "Unmute"
-                      CaseDeleted -> "Deleted"
-                      CaseSoftban -> "Softban"
-                    },
-                  ),
-                ]),
-                html.p([], [
-                  html.text("Or whatever"),
-                ]),
-                html.ul([class("flex gap-5 flex-wrap")], [
-                  html.li([], [
-                    html.h5([class("text-white font-semibold")], [
-                      html.text("Reported by"),
+                html.div(
+                  [class("flex items-center justify-between gap-3 flex-wrap")],
+                  [
+                    html.h3([class("font-semibold text-white text-base")], [
+                      html.text(case mod_case.kind {
+                        CaseBan -> "Ban"
+                        CaseUnban -> "Unban"
+                        CaseNote -> "Note"
+                        CaseWarn -> "Warn"
+                        CaseKick -> "Kick"
+                        CaseMute -> "Mute"
+                        CaseUnmute -> "Unmute"
+                        CaseDeleted -> "Deleted"
+                        CaseSoftban -> "Softban"
+                      }),
                     ]),
-                    html.p([], [
-                      html.button(
-                        [
-                          class(
-                            "px-1 py-0.5 rounded-md bg-tag-bg text-tag-fg leading-none",
-                          ),
-                        ],
-                        [html.text("@graphiteisaac")],
-                      ),
-                    ]),
-                  ]),
+                    html.span(
+                      [
+                        class(
+                          "px-2 pt-0.5 pb-1 rounded-md bg-tag-bg text-tag-fg leading-none",
+                        ),
+                      ],
+                      [html.text("the_dougla")],
+                    ),
+                  ],
+                ),
 
-                  html.li([], [
-                    html.h5([class("text-white font-semibold")], [
-                      html.text("Trainee"),
-                    ]),
-                    html.p([], [
-                      html.button(
-                        [
-                          class(
-                            "px-1 py-0.5 rounded-md bg-tag-bg text-tag-fg leading-none",
-                          ),
-                        ],
-                        [html.text("@poopsocket")],
-                      ),
-                    ]),
-                  ]),
+                html.p([], [
+                  html.text(mod_case.actioned_user_name),
                 ]),
                 html.footer([class("text-sm")], [
                   html.p([], [
@@ -1684,6 +1690,21 @@ fn thread_view(model: Model, thread: ModmailThread) {
               ),
             ],
           ),
+        )
+      }),
+    ),
+  ])
+}
+
+fn case_view(model: Model, mod_case: AthenaCase) {
+  html.div([class("py-6 px-6 block h-full overflow-y-auto")], [
+    html.header([], []),
+    keyed.ul(
+      [class("grid gap-4")],
+      list.index_map(mod_case.notes, fn(note, i) {
+        #(
+          "note#" <> int.to_string(i),
+          html.li([], [element.unsafe_raw_html("", "article", [], note.body)]),
         )
       }),
     ),

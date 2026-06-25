@@ -18,7 +18,13 @@
   --color-green-bg: #2f403e;
   --color-green-fg: #62b77c;
 
-  --color-case-blue: #3498db;
+  --color-case-ban: #cb4214;
+  --color-case-unban: #9c59b6;
+  --color-case-note: #3498db;
+  --color-case-warn: #d9e622;
+  --color-case-kick: #e67e22;
+  --color-case-mute: #e6b222;
+  --color-case-unmute: #a175b3;
 
   --color-blurple-500: #5865f2;
 
@@ -29,12 +35,6 @@
   --color-info-fg: #8ebefa;
 
   --grid-template-columns-page: minmax(220px, 280px) minmax(200px, 400px) 1fr;
-
-  /* --color-gray-950: #161619; */
-  /* --color-gray-900: #1b1b1f; */
-  /* --color-gray-800: #2e3136; */
-  /* --color-gray-400: #84858b; */
-  /* --color-ow-orange: #f06414; */
 }
 
 body {

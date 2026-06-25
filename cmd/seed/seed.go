@@ -28,7 +28,7 @@ func main() {
 		log.Fatalf("could not create wave: %v", err)
 	}
 
-	if _, err = db.Exec("INSERT INTO staff (snowflake, username, display_name, wave_id, role) VALUES ('204084691425427466', 'isaac', 'isaac nonlogged', 67, 'admin'), ('164564849915985922', 'dray', 'yarD', 67, 'helper')"); err != nil {
+	if _, err = db.Exec("INSERT INTO staff (snowflake, username, display_name, wave_id, role) VALUES ('204084691425427466', 'isaac', 'isaac nonlogged', 67, 'admin'), ('164564849915985922', 'dray', 'yarD', 67, 'helper'), ('163008912348413953', 'kieu_', 'Mik', 67, 'trainee')"); err != nil {
 		log.Fatalf("could not create staff users: %v", err)
 	}
 }

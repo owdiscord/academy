@@ -238,6 +238,19 @@ func (h *Handlers) Questions(c *echo.Context) error {
 	return c.JSON(http.StatusOK, questions)
 }
 
+func (h *Handlers) Stats(c *echo.Context) error {
+	sess := c.Get("session_value").(*database.Session)
+	waveID := sess.WaveID
+
+	stats, err := h.db.GetStatsOverview(c.Request().Context(), waveID)
+	if err != nil {
+		c.Logger().Error("could not get stats", "err", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve or calculate stats"})
+	}
+
+	return c.JSON(http.StatusOK, stats)
+}
+
 func (h *Handlers) Avatar(c *echo.Context) error {
 	userID := c.Param("userID")[:len(c.Param("userID"))-len(filepath.Ext(c.Param("userID")))]
 	if _, err := os.Stat("./avatars/" + userID + ".png"); err != nil {

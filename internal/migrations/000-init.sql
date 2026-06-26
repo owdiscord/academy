@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS issues (
   case_id INT NULL DEFAULT NULL,
   -- One of 'pending', 'handled', 'archived', or 'deleted'
   status VARCHAR(32) NOT NULL DEFAULT 'pending',
+  category VARCHAR(512) NOT NULL DEFAULT 'general',
   reason TEXT NOT NULL
 );
 

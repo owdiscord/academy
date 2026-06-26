@@ -28,20 +28,84 @@ import (
 type Etl struct {
 	startDate       time.Time
 	waveID          int
-	trainees        []string
+	staffIDs        []string
 	privateChannels []string
+	statCollection  map[string]*DateStatParams
 	athDB           *sqlx.DB
 	mmDB            *sqlx.DB
 	outDB           *sqlx.DB
 }
 
-func New(wave *database.Wave, athenaDB *sqlx.DB, modmailDB *sqlx.DB, outDB *sqlx.DB) *Etl {
+func New(wave *database.Wave, athenaDB *sqlx.DB, modmailDB *sqlx.DB, outDB *sqlx.DB, staff []database.Staff, privateChannels []string) *Etl {
+	staffIDs := []string{}
+	statCollection := map[string]*DateStatParams{}
+
+	for _, member := range staff {
+		staffIDs = append(staffIDs, member.Snowflake)
+		statCollection[member.Snowflake] = &DateStatParams{
+			WaveID:         wave.ID,
+			UserID:         member.ID,
+			PublicMsgs:     0,
+			PrivateMsgs:    0,
+			Cases:          0,
+			ThreadChat:     0,
+			ThreadReplies:  0,
+			ThreadClosures: 0,
+			SnippetsUsed:   0,
+		}
+	}
+
 	return &Etl{
-		startDate: wave.BeginAt,
-		waveID:    wave.ID,
-		athDB:     athenaDB,
-		mmDB:      modmailDB,
-		outDB:     outDB,
+		startDate:       wave.BeginAt,
+		waveID:          wave.ID,
+		staffIDs:        staffIDs,
+		privateChannels: privateChannels,
+		statCollection:  statCollection,
+		athDB:           athenaDB,
+		mmDB:            modmailDB,
+		outDB:           outDB,
+	}
+}
+
+func (e *Etl) IncreasePublicMsgStat(snowflake string, by int) {
+	if e.statCollection[snowflake] != nil {
+		e.statCollection[snowflake].PublicMsgs += by
+	}
+}
+
+func (e *Etl) IncreasePrivateMsgStat(snowflake string, by int) {
+	if e.statCollection[snowflake] != nil {
+		e.statCollection[snowflake].PrivateMsgs += by
+	}
+}
+
+func (e *Etl) IncreaseCasesStat(snowflake string, by int) {
+	if e.statCollection[snowflake] != nil {
+		e.statCollection[snowflake].Cases += by
+	}
+}
+
+func (e *Etl) IncreaseThreadChatStat(snowflake string, by int) {
+	if e.statCollection[snowflake] != nil {
+		e.statCollection[snowflake].ThreadChat += by
+	}
+}
+
+func (e *Etl) IncreaseThreadReplyStat(snowflake string, by int) {
+	if e.statCollection[snowflake] != nil {
+		e.statCollection[snowflake].ThreadReplies += by
+	}
+}
+
+func (e *Etl) IncreaseCloseStat(snowflake string, by int) {
+	if e.statCollection[snowflake] != nil {
+		e.statCollection[snowflake].ThreadClosures += by
+	}
+}
+
+func (e *Etl) IncreaseSnippetStat(snowflake string, by int) {
+	if e.statCollection[snowflake] != nil {
+		e.statCollection[snowflake].SnippetsUsed += by
 	}
 }
 
@@ -92,7 +156,7 @@ func (e *Etl) FindAllTraineeThreads(ctx context.Context) ([]ImportedThread, erro
 		WHERE tm.user_id IN (?)
 		AND (t.created_at > ? OR t.updated_at > ?)
 		GROUP BY t.id, t.status, t.user_id, t.user_name, t.roles, t.created_at, t.closed_by_id`,
-		e.trainees, e.startDate, e.startDate,
+		e.staffIDs, e.startDate, e.startDate,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("building FindAllTraineeThreads query: %w", err)
@@ -208,7 +272,7 @@ func (e *Etl) FindAllTraineeCases(ctx context.Context) ([]ImportedCase, error) {
         FROM cases
         WHERE mod_id IN (?)
         AND created_at > ?`,
-		e.trainees, e.startDate,
+		e.staffIDs, e.startDate,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("building FindAllTraineeCases query: %w", err)
@@ -284,7 +348,7 @@ type MessageStat struct {
 
 func (e *Etl) GetMessageStats(ctx context.Context, tx *sqlx.Tx) ([]MessageStat, error) {
 	chanIDs := strings.Join(e.privateChannels, ", ")
-	userIDs := strings.Join(e.trainees, ", ")
+	userIDs := strings.Join(e.staffIDs, ", ")
 
 	stats := []MessageStat{}
 
@@ -318,7 +382,8 @@ type DateStatParams struct {
 	SnippetsUsed   int
 }
 
-func (e *Etl) SetDateStatsForUser(ctx context.Context, tx *sqlx.Tx, params DateStatParams) error {
+// SaveDateStatsForUser is a mega-function for updating every value, which should be seldom-used
+func (e *Etl) SaveDateStatsForUser(ctx context.Context, tx *sqlx.Tx, params DateStatParams) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO stats_per_date
   (date, user_id, wave_id, public_messages, private_messages, cases, thread_chat, thread_replies, thread_closures, snippets_used)
 VALUES
@@ -334,4 +399,10 @@ ON DUPLICATE KEY UPDATE
   snippets_used      = snippets_used      + VALUES(snippets_used)`, params.UserID, params.WaveID, params.PublicMsgs, params.PrivateMsgs, params.Cases, params.ThreadChat, params.ThreadReplies, params.ThreadClosures, params.SnippetsUsed)
 
 	return err
+}
+
+func (e *Etl) SaveAllDateStats(ctx context.Context, tx *sqlx.Tx) {
+	for _, stats := range e.statCollection {
+		e.SaveDateStatsForUser(ctx, tx, *stats)
+	}
 }

@@ -4,6 +4,7 @@ package migrations
 import (
 	"embed"
 	"fmt"
+	"log/slog"
 	"net/url"
 
 	"github.com/amacneil/dbmate/v2/pkg/dbmate"
@@ -23,16 +24,16 @@ func Migrate(databaseURI string) error {
 	db.FS = fs
 	db.MigrationsDir = []string{"."}
 
-	fmt.Println("Migrations:")
+	slog.Default().Info("running database migrations", "database", url.Path)
 	migrations, err := db.FindMigrations()
 	if err != nil {
 		return err
 	}
+
 	for _, m := range migrations {
 		fmt.Print(m.Version, m.FilePath)
 	}
 
-	fmt.Println("\nApplying...")
 	err = db.CreateAndMigrate()
 	if err != nil {
 		return err

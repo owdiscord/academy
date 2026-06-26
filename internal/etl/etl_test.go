@@ -40,7 +40,7 @@ func TestMain(m *testing.M) {
 		mmDB:            mockDB,
 		athDB:           mockDB,
 		outDB:           out,
-		trainees:        []string{"204084691425427466"},
+		staffIDs:        []string{"204084691425427466"},
 		privateChannels: config.PrivateChannels,
 	}
 

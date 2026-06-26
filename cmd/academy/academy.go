@@ -50,6 +50,7 @@ func main() {
 	g.GET("/issues/:id", h.GetIssue)
 	g.PUT("/issues/id", h.CreateIssue)
 	g.GET("/questions", h.Questions)
+	g.GET("/stats", h.Stats)
 	g.GET("/avatar/:userID", h.Avatar)
 
 	e.Start(":1323")

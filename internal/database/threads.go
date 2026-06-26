@@ -62,7 +62,6 @@ func (db *DB) GetThreadByID(ctx context.Context, id BinaryUUID) (*Thread, error)
 		msg.Body = string(formatting.MDtoHTML([]byte(msg.Body)))
 		thread.Messages = append(thread.Messages, msg)
 	}
-	thread.Messages = messages
 
 	return &thread, nil
 }

@@ -11,6 +11,7 @@ type Case struct {
 	ID               int        `db:"id" json:"id"`
 	CaseNumber       int        `db:"case_number" json:"case_number,omitempty"`
 	ModID            string     `db:"mod_id" json:"mod_id"`
+	ModName          string     `db:"mod_name" json:"mod_name"`
 	ActionedUserID   string     `db:"actioned_user_id" json:"actioned_user_id"`
 	ActionedUserName string     `db:"actioned_user_name" json:"actioned_user_name"`
 	CreatedAt        int        `db:"created_at" json:"created_at"`
@@ -29,7 +30,7 @@ type CaseNote struct {
 func (db *DB) GetAllCases(ctx context.Context) ([]Case, error) {
 	cases := []Case{}
 
-	if err := db.conn.SelectContext(ctx, &cases, "SELECT id, case_number, mod_id, actioned_user_id, actioned_user_name, UNIX_TIMESTAMP(created_at) created_at, type FROM cases ORDER BY created_at DESC"); err != nil {
+	if err := db.conn.SelectContext(ctx, &cases, "SELECT c.id, c.case_number, c.mod_id, COALESCE(s.username, 'Unknown') mod_name, c.actioned_user_id, c.actioned_user_name, UNIX_TIMESTAMP(c.created_at) created_at, c.type FROM cases c LEFT JOIN staff s ON s.snowflake = c.mod_id ORDER BY created_at DESC"); err != nil {
 		return nil, err
 	}
 
@@ -39,7 +40,7 @@ func (db *DB) GetAllCases(ctx context.Context) ([]Case, error) {
 func (db *DB) GetCaseByID(ctx context.Context, id int) (*Case, error) {
 	modCase := Case{}
 
-	if err := db.conn.GetContext(ctx, &modCase, "SELECT id, case_number, mod_id, actioned_user_id, actioned_user_name, UNIX_TIMESTAMP(created_at) created_at, type FROM cases WHERE id = ?", id); err != nil {
+	if err := db.conn.GetContext(ctx, &modCase, "SELECT c.id, c.case_number, c.mod_id, COALESCE(s.username, 'Unknown') mod_name, c.actioned_user_id, c.actioned_user_name, UNIX_TIMESTAMP(c.created_at) created_at, c.type FROM cases c LEFT JOIN staff s ON s.snowflake = c.mod_id WHERE c.id = ?", id); err != nil {
 		return nil, fmt.Errorf("case(%d): %v", id, err)
 	}
 

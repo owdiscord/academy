@@ -262,6 +262,7 @@ type ModmailThread {
     inbound_messages: Int,
     outbound_messages: Int,
     chat_messages: Int,
+    roles: List(String),
     participants: List(String),
     messages: List(ThreadMsg),
   )
@@ -281,6 +282,8 @@ fn modmail_thread_decoder() -> decode.Decoder(ModmailThread) {
     [],
     decode.list(thread_msg_decoder()),
   )
+  use roles <- decode.field("roles", decode.list(decode.string))
+  let roles = list.filter(roles, fn(r) { r != "@everyone" })
 
   decode.success(ModmailThread(
     id:,
@@ -291,6 +294,7 @@ fn modmail_thread_decoder() -> decode.Decoder(ModmailThread) {
     outbound_messages:,
     chat_messages:,
     participants:,
+    roles:,
     messages:,
   ))
 }
@@ -339,6 +343,7 @@ type AthenaCase {
     id: Int,
     case_number: Int,
     mod_id: String,
+    mod_name: String,
     actioned_user_id: String,
     actioned_user_name: String,
     created_at: timestamp.Timestamp,
@@ -351,6 +356,7 @@ fn athena_case_decoder() -> decode.Decoder(AthenaCase) {
   use id <- decode.field("id", decode.int)
   use case_number <- decode.field("case_number", decode.int)
   use mod_id <- decode.field("mod_id", decode.string)
+  use mod_name <- decode.field("mod_name", decode.string)
   use actioned_user_id <- decode.field("actioned_user_id", decode.string)
   use actioned_user_name <- decode.field("actioned_user_name", decode.string)
   use created_at <- decode.field("created_at", timestamp_decoder())
@@ -364,6 +370,7 @@ fn athena_case_decoder() -> decode.Decoder(AthenaCase) {
     id:,
     case_number:,
     mod_id:,
+    mod_name:,
     actioned_user_id:,
     actioned_user_name:,
     created_at:,
@@ -403,9 +410,9 @@ fn user_decoder() -> decode.Decoder(User) {
 }
 
 type Toast {
-  ToastError(String)
-  ToastSuccess(String)
-  ToastWarning(String)
+  ToastError(msg: String)
+  ToastSuccess(msg: String)
+  ToastWarning(msg: String)
 }
 
 type Modal {
@@ -416,6 +423,7 @@ type Modal {
 type Model {
   Model(
     route: Route,
+    authenticated: Bool,
     toasts: dict.Dict(Int, Toast),
     wave: Wave,
     loading: Bool,
@@ -469,6 +477,7 @@ fn init(_) -> #(Model, Effect(Message)) {
 
   #(
     Model(
+      authenticated: False,
       route:,
       toasts: dict.new(),
       loading: False,
@@ -526,6 +535,7 @@ type Message {
   ApiReturnedNoAuth
 
   // User initiated actions
+  UserClickedLogin
   UserChangedThreadOpenFilter(Bool)
   UserChangedThreadClosedFilter(Bool)
   UserChangedThreadTraineeFilter(String)
@@ -548,11 +558,14 @@ fn on_url_change(uri: uri.Uri) -> Message {
 
     ["questions"] -> OnRouteChange(InterviewQuestions)
 
+    ["api", "auth", "redirect"] -> UserClickedLogin
+
     ["cases", id] as path ->
       case int.parse(id) {
         Ok(id) -> OnRouteChange(Case(id, option.None))
         _ -> OnRouteChange(NotFound(path))
       }
+
     path -> OnRouteChange(NotFound(path))
   }
 }
@@ -583,7 +596,10 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
 
     ApiReturnedWave(Error(err)) -> #(model, rsvp_err_to_toast("wave", err))
 
-    ApiReturnedUser(Ok(user)) -> #(Model(..model, user: user), effect.none())
+    ApiReturnedUser(Ok(user)) -> #(
+      Model(..model, user: user, authenticated: True),
+      effect.none(),
+    )
 
     ApiReturnedUser(Error(err)) -> #(model, rsvp_err_to_toast("user", err))
 
@@ -632,7 +648,7 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
 
     ApiReturnedIssues(Error(err)) -> #(model, rsvp_err_to_toast("issues", err))
 
-    ApiReturnedNoAuth -> #(model, push_to_login())
+    ApiReturnedNoAuth -> #(Model(..model, authenticated: False), effect.none())
 
     // User filtering
     UserChangedThreadOpenFilter(state) -> #(
@@ -665,351 +681,294 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
       effect.none(),
     )
 
+    UserClickedLogin -> #(model, push_to_login())
+
     UserClosedModal -> #(Model(..model, modal: ClosedModal), effect.none())
   }
 }
 
 fn view(model: Model) -> Element(Message) {
-  html.div(
-    [class("grid lg:grid-cols-page h-[100dvh] relative overflow-y-hidden")],
-    [
-      html.nav(
+  case model.authenticated {
+    True ->
+      html.div(
+        [class("grid lg:grid-cols-page h-[100dvh] relative overflow-y-hidden")],
         [
-          class(
-            "page-sidebar flex flex-col border-r border-gray-800 h-[100dvh]",
-          ),
-        ],
-        [
-          html.details([class("relative")], [
-            html.summary([class("sidebar-logo")], [
-              icons.mortarboard([]),
-              html.div([], [
-                html.h3([], [html.text("Academy")]),
-                html.p([class("font-bold text-xs text-gray-400")], [
-                  {
-                    let #(calendar.Date(year:, month:, ..), _) =
-                      timestamp.to_calendar(
-                        model.wave.begin_at,
-                        calendar.local_offset(),
-                      )
-
-                    html.text(
-                      calendar.month_to_string(month)
-                      <> " "
-                      <> int.to_string(year),
-                    )
-                  },
-                ]),
-              ]),
-              icons.chevron_down([class("size-4 ml-auto")]),
-            ]),
-            html.ul(
-              [
-                class(
-                  "absolute top-full left-3 right-3 bg-gray-900 border border-gray-800 rounded-lg p-1 z-50",
-                ),
-              ],
-              [
-                html.li([], [html.text("Coming soon...")]),
-                // html.li([], [html.button([], [html.text("2026 — June")])]),
-              // html.li([], [html.button([], [html.text("2025 — December")])]),
-              // html.li([], [html.button([], [html.text("2023 — Jure")])]),
-              // html.li([], [html.button([], [html.text("2021 — Septober")])]),
-              ],
-            ),
-          ]),
-          html.ul(
-            [],
-            list.map(
-              case model.wave.state {
-                WaveInterviews -> [InterviewQuestions]
-                WaveHelper
-                  if model.user.role == HelperUser
-                  || model.user.role == AdminUser
-                -> [Threads, Cases, Stats, Issues]
-                WaveHelper -> [Threads, Cases, Stats]
-                WaveHistoric -> [Threads, Cases, Stats, Issues]
-              },
-              sidebar_link(model, _),
-            ),
-          ),
-          html.div(
+          html.nav(
             [
               class(
-                "mt-auto bg-gray-900 border border-gray-800 rounded-md py-3 px-4 m-3 font-bold text-gray-100",
+                "page-sidebar flex flex-col border-r border-gray-800 h-[100dvh]",
               ),
             ],
             [
-              html.text(case model.wave.state {
-                WaveInterviews -> "Interviews"
-                WaveHelper -> "Training"
-                WaveHistoric -> "Historic"
-              }),
-            ],
-          ),
-        ],
-      ),
+              html.details([class("relative")], [
+                html.summary([class("sidebar-logo")], [
+                  icons.mortarboard([]),
+                  html.div([], [
+                    html.h3([], [html.text("Academy")]),
+                    html.p([class("font-bold text-xs text-gray-400")], [
+                      {
+                        let #(calendar.Date(year:, month:, ..), _) =
+                          timestamp.to_calendar(
+                            model.wave.begin_at,
+                            calendar.local_offset(),
+                          )
 
-      case model.route {
-        Threads | Thread(..) -> threads_sidebar(model)
-        Cases | Case(..) -> cases_sidebar(model)
-        _ -> element.none()
-      },
-
-      html.main(
-        [
-          class(case model.route {
-            Threads | Thread(..) | Cases | Case(..) ->
-              "h-[100dvh] flex flex-col"
-            _ -> "lg:col-span-2 h-[100dvh] flex flex-col"
-          }),
-        ],
-        [
-          html.header(
-            [
-              class(
-                "px-6 h-20 flex items-center justify-between flex-wrap border-b border-gray-900",
-              ),
-            ],
-            [
-              html.h1([class("font-bold text-xl text-white")], [
-                html.text(case model.route {
-                  Threads -> "Threads"
-                  Thread(
-                    content: option.Some(ModmailThread(user_name:, ..)),
-                    ..,
-                  ) -> "Thread with " <> user_name
-                  Thread(..) -> "Loading thread..."
-                  Cases -> "Cases"
-                  Case(id:, ..) -> "Case #" <> int.to_string(id)
-                  Stats -> "Statistics"
-                  Issues -> "Issues"
-                  InterviewQuestions -> "Interview Questions"
-                  NotFound(_path) -> "Page Not Found"
-                }),
-              ]),
-              html.nav([], [
-                html.details([class("relative")], [
-                  html.summary(
-                    [
-                      class(
-                        "flex items-center gap-3 font-semibold cursor-pointer rounded-md py-2 px-3 border border-transparent transition-colors hover:border-gray-800 hover:bg-gray-1000",
-                      ),
-                    ],
-                    [
-                      html.img([
-                        attribute.src(avatar(model.user.id)),
-                        class("size-7 rounded-full"),
-                      ]),
-                      html.text(model.user.display_name),
-                      icons.chevron_down([class("size-4")]),
-                    ],
-                  ),
-                  html.ul([class("absolute top-full right-0 bg-black")], [
-                    html.li([], [
-                      html.a([attribute.href("/api/auth/logout")], [
-                        html.text("Logout"),
-                      ]),
+                        html.text(
+                          calendar.month_to_string(month)
+                          <> " "
+                          <> int.to_string(year),
+                        )
+                      },
                     ]),
                   ]),
+                  icons.chevron_down([class("size-4 ml-auto")]),
                 ]),
+                html.ul(
+                  [
+                    class(
+                      "absolute top-full left-3 right-3 bg-gray-900 border border-gray-800 rounded-lg p-1 z-50",
+                    ),
+                  ],
+                  [
+                    html.li([], [html.text("Coming soon...")]),
+                    // html.li([], [html.button([], [html.text("2026 — June")])]),
+                  // html.li([], [html.button([], [html.text("2025 — December")])]),
+                  // html.li([], [html.button([], [html.text("2023 — Jure")])]),
+                  // html.li([], [html.button([], [html.text("2021 — Septober")])]),
+                  ],
+                ),
               ]),
+              html.ul(
+                [],
+                list.map(
+                  case model.wave.state {
+                    WaveInterviews -> [InterviewQuestions]
+                    WaveHelper
+                      if model.user.role == HelperUser
+                      || model.user.role == AdminUser
+                    -> [Threads, Cases, Stats, Issues]
+                    WaveHelper -> [Threads, Cases, Stats]
+                    WaveHistoric -> [Threads, Cases, Stats, Issues]
+                  },
+                  sidebar_link(model, _),
+                ),
+              ),
+              html.div(
+                [
+                  class(
+                    "mt-auto bg-gray-900 border border-gray-800 rounded-md py-3 px-4 m-3 font-bold text-gray-100",
+                  ),
+                ],
+                [
+                  html.text(case model.wave.state {
+                    WaveInterviews -> "Interviews"
+                    WaveHelper -> "Training"
+                    WaveHistoric -> "Historic"
+                  }),
+                ],
+              ),
             ],
           ),
 
           case model.route {
-            Thread(id:, content: option.None) ->
-              html.div([class("p-6")], [
-                html.div(
-                  [
-                    attribute.role("alert"),
-                    class(
-                      "bg-info-bg border border-info-fg text-white p-3 rounded-md",
-                    ),
-                  ],
-                  [
-                    html.p([], [
-                      html.text(
-                        "Loading ModMail thread #" <> id <> " content...",
-                      ),
-                    ]),
-                  ],
-                ),
-              ])
-
-            Thread(content: option.Some(thread), ..) ->
-              thread_view(model, thread)
-
-            Threads ->
-              html.div([class("p-10 text-center text-gray-300 text-xl")], [
-                html.text("Please select a thread"),
-              ])
-
-            Issues -> issues_view(model)
-
-            Cases -> html.div([], [])
-
-            Case(id:, content: option.None) ->
-              html.div([class("p-6")], [
-                html.div(
-                  [
-                    attribute.role("alert"),
-                    class(
-                      "bg-info-bg border border-info-fg text-white p-3 rounded-md",
-                    ),
-                  ],
-                  [
-                    html.p([], [
-                      html.text("Loading case..."),
-                    ]),
-                  ],
-                ),
-              ])
-
-            Case(content: option.Some(mod_case), ..) ->
-              case_view(model, mod_case)
-
-            Stats -> stats_view(model)
-
-            InterviewQuestions ->
-              questions_view(model.user, model.interview_questions)
-
-            NotFound(_) -> html.div([], [])
+            Threads | Thread(..) -> threads_sidebar(model)
+            Cases | Case(..) -> cases_sidebar(model)
+            _ -> element.none()
           },
-        ],
-      ),
-      keyed.ul(
-        [class("fixed top-4 right-4")],
-        list.map(dict.to_list(model.toasts), fn(combined) {
-          case combined {
-            #(key, ToastError(msg)) -> #(
-              "toast#" <> int.to_string(key),
-              html.li([], [html.text(msg)]),
-            )
-            #(key, ToastSuccess(msg)) -> #(
-              "toast#" <> int.to_string(key),
-              html.li([], [html.text(msg)]),
-            )
-            #(key, ToastWarning(msg)) -> #(
-              "toast#" <> int.to_string(key),
-              html.li([], [html.text(msg)]),
-            )
-          }
-        }),
-      ),
-      html.div(
-        [
-          on_direct_click(UserClosedModal),
-          class(
-            "fixed inset-0 bg-gray-1000/80 flex items-center justify-center transition-opacity",
-          ),
-          attribute.classes([
-            #("opacity-0 pointer-events-none", model.modal == ClosedModal),
-          ]),
-        ],
-        [
-          case model.modal {
-            ClosedModal -> element.none()
-            ThreadIssueModal(thread_id:, message_id:, mod_id:) ->
-              html.div(
+
+          html.main(
+            [
+              class(case model.route {
+                Threads | Thread(..) | Cases | Case(..) ->
+                  "h-[100dvh] flex flex-col"
+                _ -> "lg:col-span-2 h-[100dvh] flex flex-col"
+              }),
+            ],
+            [
+              html.header(
                 [
-                  class("bg-gray-900 rounded-xl max-w-xl w-full shadow-xl"),
+                  class(
+                    "px-6 h-20 flex items-center justify-between flex-wrap border-b border-gray-900",
+                  ),
                 ],
                 [
-                  html.header(
-                    [
-                      class(
-                        "p-5 lg:p-8 flex items-center gap-3 flex-wrap justify-between",
-                      ),
-                    ],
-                    [
-                      html.h4([class("font-semibold text-white text-xl")], [
-                        html.text("Raise an issue"),
-                      ]),
-                      html.button(
+                  html.h1([class("font-bold text-xl text-white")], [
+                    html.text(case model.route {
+                      Threads -> "Threads"
+                      Thread(
+                        content: option.Some(ModmailThread(user_name:, ..)),
+                        ..,
+                      ) -> "Thread with " <> user_name
+                      Thread(..) -> "Loading thread..."
+                      Cases -> "Cases"
+                      Case(id:, ..) -> "Case #" <> int.to_string(id)
+                      Stats -> "Statistics"
+                      Issues -> "Issues"
+                      InterviewQuestions -> "Interview Questions"
+                      NotFound(_path) -> "Page Not Found"
+                    }),
+                  ]),
+                  html.nav([], [
+                    html.details([class("relative")], [
+                      html.summary(
                         [
-                          event.on_click(UserClosedModal),
                           class(
-                            "cursor-pointer p-2 cursor-pointer rounded-md hover:bg-gray-800",
+                            "flex items-center gap-3 font-semibold cursor-pointer rounded-md py-2 px-3 border border-transparent transition-colors hover:border-gray-800 hover:bg-gray-1000",
                           ),
                         ],
-                        [icons.x([class("size-4")])],
+                        [
+                          html.img([
+                            attribute.src(avatar(model.user.id)),
+                            class("size-7 rounded-full"),
+                          ]),
+                          html.text(model.user.display_name),
+                          icons.chevron_down([class("size-4")]),
+                        ],
                       ),
-                    ],
-                  ),
-                  html.form(
-                    [class("p-5 lg:p-8 pt-0 lg:pt-0"), attribute.method("post")],
-                    [
-                      html.input([
-                        attribute.type_("hidden"),
-                        attribute.name("thread_id"),
-                        attribute.value(thread_id),
-                      ]),
-                      html.input([
-                        attribute.type_("hidden"),
-                        attribute.name("message_id"),
-                        attribute.value(int.to_string(message_id)),
-                      ]),
-                      html.input([
-                        attribute.type_("hidden"),
-                        attribute.name("mod_id"),
-                        attribute.value(mod_id),
-                      ]),
-                      html.div([class("form-row")], [
-                        html.label([attribute.for("concern")], [
-                          html.text("Categorize your concern"),
-                        ]),
-                        html.select(
-                          [attribute.id("concern"), attribute.name("concern")],
-                          [
-                            html.option(
-                              [attribute.value("bad_response")],
-                              "Poorly communicated response",
-                            ),
-                            html.option(
-                              [attribute.value("against_policy")],
-                              "Against our policies",
-                            ),
-                            html.option(
-                              [attribute.value("oversharing")],
-                              "Oversharing information",
-                            ),
-                            html.option(
-                              [attribute.value("argumentative")],
-                              "Argumentative",
-                            ),
-                          ],
-                        ),
-                      ]),
-
-                      html.div([class("form-row")], [
-                        html.label([attribute.for("thoughts")], [
-                          html.text("Briefly describe your thoughts"),
-                        ]),
-                        html.textarea(
-                          [
-                            attribute.id("thoughts"),
-                            attribute.name("thoughts"),
-                            attribute.rows(3),
-                          ],
-                          "",
-                        ),
-                      ]),
-
-                      html.div([class("form-row submission-row")], [
-                        html.button([attribute.type_("submit")], [
-                          html.text("Finish Raising"),
+                      html.ul([class("absolute top-full right-0 bg-black")], [
+                        html.li([], [
+                          html.a([attribute.href("/api/auth/logout")], [
+                            html.text("Logout"),
+                          ]),
                         ]),
                       ]),
-                    ],
-                  ),
+                    ]),
+                  ]),
                 ],
+              ),
+
+              case model.route {
+                Thread(id:, content: option.None) ->
+                  html.div([class("p-6")], [
+                    html.div(
+                      [
+                        attribute.role("alert"),
+                        class(
+                          "bg-info-bg border border-info-fg text-white p-3 rounded-md",
+                        ),
+                      ],
+                      [
+                        html.p([], [
+                          html.text(
+                            "Loading ModMail thread #" <> id <> " content...",
+                          ),
+                        ]),
+                      ],
+                    ),
+                  ])
+
+                Thread(content: option.Some(thread), ..) ->
+                  thread_view(model, thread)
+
+                Threads ->
+                  html.div([class("p-10 text-center text-gray-300 text-xl")], [
+                    html.text("Please select a thread"),
+                  ])
+
+                Issues -> issues_view(model)
+
+                Cases -> html.div([], [])
+
+                Case(id:, content: option.None) ->
+                  html.div([class("p-6")], [
+                    html.div(
+                      [
+                        attribute.role("alert"),
+                        class(
+                          "bg-info-bg border border-info-fg text-white p-3 rounded-md",
+                        ),
+                      ],
+                      [
+                        html.p([], [
+                          html.text("Loading case..."),
+                        ]),
+                      ],
+                    ),
+                  ])
+
+                Case(content: option.Some(mod_case), ..) ->
+                  case_view(model, mod_case)
+
+                Stats -> stats_view(model)
+
+                InterviewQuestions ->
+                  questions_view(model.user, model.interview_questions)
+
+                NotFound(_) -> html.div([], [])
+              },
+            ],
+          ),
+          keyed.ul(
+            [class("fixed top-10 right-4 flex items-end flex-col gap-2")],
+            list.map(dict.to_list(model.toasts), fn(combined) {
+              let #(key, toast) = combined
+
+              let classes =
+                "rounded-lg border border-white/10 py-2 text-sm px-4 font-semibold text-white "
+                <> case toast {
+                  ToastError(_) -> "bg-rose-900"
+                  ToastSuccess(_) -> "bg-emerald-900"
+                  ToastWarning(_) -> "bg-orange-900"
+                }
+
+              #(
+                "toast#" <> int.to_string(key),
+                html.li([class(classes)], [html.text(toast.msg)]),
               )
-          },
+            }),
+          ),
+          html.div(
+            [
+              on_direct_click(UserClosedModal),
+              class(
+                "fixed inset-0 bg-gray-1000/80 flex items-center justify-center transition-opacity",
+              ),
+              attribute.classes([
+                #("opacity-0 pointer-events-none", model.modal == ClosedModal),
+              ]),
+            ],
+            [
+              case model.modal {
+                ClosedModal -> element.none()
+                ThreadIssueModal(thread_id:, message_id:, mod_id:) ->
+                  thread_issue_modal(thread_id:, message_id:, mod_id:)
+              },
+            ],
+          ),
         ],
-      ),
-    ],
-  )
+      )
+    False ->
+      html.div(
+        [
+          class(
+            "h-[100dvh] flex flex-col items-center justify-center py-10 text-center",
+          ),
+        ],
+        [
+          icons.mortarboard([class("size-16 fill-ow-orange mb-4")]),
+          html.h1([class("font-bold text-3xl text-white")], [
+            html.text("You aren't authenticated"),
+          ]),
+          html.p([class("text-gray-300 max-w-xl mb-6")], [
+            html.text(
+              "It looks like you are not logged in to Academy. If you are an Overwatch Discord staff member, you can login below.",
+            ),
+          ]),
+          html.a(
+            [
+              attribute.href("/api/auth/redirect"),
+              class(
+                "rounded-md py-2 px-4 font-semibold text-white flex items-center gap-2 bg-blurple-500 transition-opacity hover:opacity-80",
+              ),
+            ],
+            [
+              icons.discord([class("size-6")]),
+              html.text("Login with Discord"),
+            ],
+          ),
+        ],
+      )
+  }
 }
 
 fn sidebar_link(model: Model, route: Route) {
@@ -1152,7 +1111,6 @@ fn threads_sidebar(model: Model) {
                         "bg-gray-950 border-gray-800 text-gray-300",
                         thread.status == ThreadClosed,
                       ),
-                      // #("border-l-blurple-500", True),
                     ]),
                   ],
                   [
@@ -1291,15 +1249,20 @@ fn cases_sidebar(model: Model) {
                 class(
                   "border border-gray-750 bg-gray-800 rounded border-l-4 py-2 px-4 grid gap-2 "
                   <> case mod_case.kind {
-                    CaseBan -> "border-l-case-ban"
-                    CaseUnban -> "border-l-case-unban"
-                    CaseNote -> "border-l-case-note"
-                    CaseWarn -> "border-l-case-warn"
-                    CaseKick -> "border-l-case-kick"
-                    CaseMute -> "border-l-case-mute"
-                    CaseUnmute -> "border-l-case-unmute"
-                    CaseDeleted -> "border-l-case-deleted"
-                    CaseSoftban -> "border-l-case-softban"
+                    CaseBan -> "border-l-case-ban "
+                    CaseUnban -> "border-l-case-unban "
+                    CaseNote -> "border-l-case-note "
+                    CaseWarn -> "border-l-case-warn "
+                    CaseKick -> "border-l-case-kick "
+                    CaseMute -> "border-l-case-mute "
+                    CaseUnmute -> "border-l-case-unmute "
+                    CaseDeleted -> "border-l-case-deleted "
+                    CaseSoftban -> "border-l-case-softban "
+                  }
+                  <> case model.route {
+                    Case(id:, ..) if id == mod_case.id ->
+                      "bg-gray-800 border-gray-750 text-gray-200"
+                    _ -> "bg-gray-950 border-gray-800 text-gray-300"
                   },
                 ),
               ],
@@ -1326,7 +1289,7 @@ fn cases_sidebar(model: Model) {
                           "px-2 pt-0.5 pb-1 rounded-md bg-tag-bg text-tag-fg leading-none",
                         ),
                       ],
-                      [html.text("the_dougla")],
+                      [html.text(mod_case.mod_name)],
                     ),
                   ],
                 ),
@@ -1547,7 +1510,7 @@ fn stats_view(model: Model) {
       ]),
 
       keyed.ul(
-        [class("grid gap-4")],
+        [class("grid lg:col-span-3 gap-4")],
         list.map(model.trainees, fn(trainee) {
           #(
             "trainee#" <> trainee.id,
@@ -1558,7 +1521,16 @@ fn stats_view(model: Model) {
                 ),
               ],
               [
-                html.figure([class("size-14 rounded-full bg-black")], []),
+                html.figure(
+                  [
+                    class("size-14 rounded-full bg-black bg-cover bg-center"),
+                    attribute.style(
+                      "background-image",
+                      "url(" <> avatar(trainee.id) <> ")",
+                    ),
+                  ],
+                  [],
+                ),
                 html.div([], [
                   html.h3([class("font-semibold text-lg text-ow-mod")], [
                     html.text(trainee.username),
@@ -1585,6 +1557,64 @@ fn stats_view(model: Model) {
 
 fn thread_view(model: Model, thread: ModmailThread) {
   html.div([class("py-6 block h-full overflow-y-auto")], [
+    html.header([class("mx-6 pb-6 mb-6 border-b border-gray-800")], [
+      html.h2([class("font-semibold text-white text-3xl mb-4")], [
+        html.text(
+          case thread.status {
+            ThreadOpen -> "Open"
+            ThreadClosed -> "Closed"
+            ThreadSuspended -> "Suspended"
+          }
+          <> " thread with "
+          <> thread.user_name,
+        ),
+      ]),
+      html.p([class("mb-4")], [
+        html.code(
+          [
+            class(
+              "font-monospace border border-gray-800 rounded-md inline-block px-3",
+            ),
+          ],
+          [html.text("user #" <> thread.user_id)],
+        ),
+      ]),
+      html.div([class("flex justify-between gap-6 items-center")], [
+        html.ul(
+          [class("flex flex-wrap gap-2")],
+          list.map(thread.roles, fn(role) {
+            html.li(
+              [
+                class(
+                  "rounded-full py-1 px-3 font-semibold border text-sm "
+                  <> case role {
+                    "Muted" -> "bg-closed/10 border-closed text-red-100"
+                    "Admin" | "Administrator" ->
+                      "bg-ow-admin/10 border-ow-admin text-blue-100"
+                    "Mod" | "Moderator" ->
+                      "bg-ow-mod/10 border-ow-mod text-orange-100"
+                    _ -> "bg-gray-800 border-gray-750 text-gray-100"
+                  },
+                ),
+              ],
+              [html.text(role)],
+            )
+          }),
+        ),
+        html.ul(
+          [],
+          list.map(thread.participants, fn(participant) {
+            html.li([], [
+              html.img([
+                class("rounded-full size-8"),
+                attribute.src(avatar(participant)),
+                attribute.alt("Participant avatar"),
+              ]),
+            ])
+          }),
+        ),
+      ]),
+    ]),
     keyed.ul(
       [class("grid")],
       list.index_map(thread.messages, fn(message, i) {
@@ -1627,9 +1657,9 @@ fn thread_view(model: Model, thread: ModmailThread) {
                     ),
                   ],
                   [
-                    html.text(case message.user_name {
-                      "" -> "ModMail"
-                      name -> name
+                    html.text(case message.kind {
+                      SystemMsg -> "ModMail"
+                      _ -> message.user_name
                     }),
                     html.span(
                       [
@@ -1795,6 +1825,108 @@ fn issues_view(model: Model) {
   ])
 }
 
+fn thread_issue_modal(
+  thread_id thread_id: String,
+  message_id message_id: Int,
+  mod_id mod_id: String,
+) {
+  html.div(
+    [
+      class("bg-gray-900 rounded-xl max-w-xl w-full shadow-xl"),
+    ],
+    [
+      html.header(
+        [
+          class("p-5 lg:p-8 flex items-center gap-3 flex-wrap justify-between"),
+        ],
+        [
+          html.h4([class("font-semibold text-white text-xl")], [
+            html.text("Raise an issue"),
+          ]),
+          html.button(
+            [
+              event.on_click(UserClosedModal),
+              class(
+                "cursor-pointer p-2 cursor-pointer rounded-md hover:bg-gray-800",
+              ),
+            ],
+            [icons.x([class("size-4")])],
+          ),
+        ],
+      ),
+      html.form(
+        [
+          class("p-5 lg:p-8 pt-0 lg:pt-0"),
+          attribute.method("post"),
+        ],
+        [
+          html.input([
+            attribute.type_("hidden"),
+            attribute.name("thread_id"),
+            attribute.value(thread_id),
+          ]),
+          html.input([
+            attribute.type_("hidden"),
+            attribute.name("message_id"),
+            attribute.value(int.to_string(message_id)),
+          ]),
+          html.input([
+            attribute.type_("hidden"),
+            attribute.name("mod_id"),
+            attribute.value(mod_id),
+          ]),
+          html.div([class("form-row")], [
+            html.label([attribute.for("concern")], [
+              html.text("Categorize your concern"),
+            ]),
+            html.select(
+              [
+                attribute.id("concern"),
+                attribute.name("concern"),
+              ],
+              [
+                html.option(
+                  [attribute.value("bad_response")],
+                  "Poorly communicated response",
+                ),
+                html.option(
+                  [attribute.value("against_policy")],
+                  "Against our policies",
+                ),
+                html.option(
+                  [attribute.value("oversharing")],
+                  "Oversharing information",
+                ),
+                html.option([attribute.value("argumentative")], "Argumentative"),
+              ],
+            ),
+          ]),
+
+          html.div([class("form-row")], [
+            html.label([attribute.for("thoughts")], [
+              html.text("Briefly describe your thoughts"),
+            ]),
+            html.textarea(
+              [
+                attribute.id("thoughts"),
+                attribute.name("thoughts"),
+                attribute.rows(3),
+              ],
+              "",
+            ),
+          ]),
+
+          html.div([class("form-row submission-row")], [
+            html.button([attribute.type_("submit")], [
+              html.text("Finish Raising"),
+            ]),
+          ]),
+        ],
+      ),
+    ],
+  )
+}
+
 //
 // Data functions
 //
@@ -1869,12 +2001,8 @@ fn remove_toast_after(id: Int, delay: Int) -> Effect(Message) {
 }
 
 fn push_to_login() {
-  echo " Trying to push to login"
-
   use _ <- effect.from
-  echo "bleep"
-  Nil
-  // browser.push_to_url("/api/auth/redirect")
+  browser.push_to_url("/api/auth/redirect")
 }
 
 // Custom events
@@ -1927,8 +2055,10 @@ fn rsvp_err_to_toast(
     rsvp.BadUrl(_) ->
       ToastAdded(ToastError("The provided URL was badly formed"))
     rsvp.HttpError(response.Response(status: 401, ..)) -> ApiReturnedNoAuth
-    rsvp.HttpError(_) ->
-      ToastAdded(ToastError("We couldn't make that HTTP request"))
+    rsvp.HttpError(response.Response(status:, ..)) ->
+      ToastAdded(ToastError(
+        "Couldn't get " <> resource <> ", HTTP status " <> int.to_string(status),
+      ))
     rsvp.JsonError(_) ->
       ToastAdded(ToastError("Could not decode JSON from response"))
     rsvp.NetworkError -> ToastAdded(ToastError("A network error has occurred"))

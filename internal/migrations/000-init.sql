@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS stats_per_date (
   snippets_used INT DEFAULT 0,
 
   PRIMARY KEY (id),
-  UNIQUE KEY uq_staff_date (staff_id, date)
+  UNIQUE KEY uq_staff_date (user_id, date)
 );
 
 CREATE TABLE IF NOT EXISTS collection_log (

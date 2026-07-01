@@ -21,3 +21,12 @@ func (db *DB) GetWaveByID(ctx context.Context, id int) (*Wave, error) {
 
 	return &wave, nil
 }
+
+func (db *DB) GetLatestWave(ctx context.Context) (*Wave, error) {
+	var wave Wave
+	if err := db.conn.GetContext(ctx, &wave, "SELECT id, state, begin_at, close_at, created_at FROM waves ORDER BY id ASC LIMIT 1"); err != nil {
+		return nil, err
+	}
+
+	return &wave, nil
+}

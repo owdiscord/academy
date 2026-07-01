@@ -54,7 +54,7 @@ func (db *DB) GetThreadByID(ctx context.Context, id BinaryUUID) (*Thread, error)
 	}
 
 	messages := []ThreadMessage{}
-	if err := db.conn.SelectContext(ctx, &messages, "SELECT id, thread_id, kind, user_id, user_name, COALESCE(role, 'system') role, body, UNIX_TIMESTAMP(created_at) created_at, attachments, metadata FROM thread_messages WHERE thread_id = ? ORDER BY created_at ASC", id); err != nil {
+	if err := db.conn.SelectContext(ctx, &messages, "SELECT id, thread_id, kind, user_id, user_name, COALESCE(role, 'system') role, body, UNIX_TIMESTAMP(created_at) created_at, COALESCE(attachments, '[]') attachments, COALESCE(metadata, '{}') metadata FROM thread_messages WHERE thread_id = ? ORDER BY created_at ASC", id); err != nil {
 		return nil, err
 	}
 

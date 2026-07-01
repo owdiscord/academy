@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 
 	start := time.Date(2020, time.January, 1, 1, 1, 1, 1, time.UTC)
 	e = &Etl{
-		startDate:       start,
+		StartDate:       start,
 		waveID:          67,
 		mmDB:            mockDB,
 		athDB:           mockDB,

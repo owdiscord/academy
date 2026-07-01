@@ -79,6 +79,7 @@ func (m *Manager) Start() {
 }
 
 func ImportData(ctx context.Context, e *etl.Etl) error {
+	slog.Default().Info("running data import", "time", e.StartDate)
 	tx, err := e.OutTx()
 	if err != nil {
 		return fmt.Errorf("could not begin transaction: %w", err)

@@ -26,7 +26,7 @@ import (
 // one that can be repeated
 
 type Etl struct {
-	startDate       time.Time
+	StartDate       time.Time
 	waveID          int
 	staffIDs        []string
 	privateChannels []string
@@ -56,7 +56,7 @@ func New(waveID int, from time.Time, athenaDB *sqlx.DB, modmailDB *sqlx.DB, outD
 	}
 
 	return &Etl{
-		startDate:       from,
+		StartDate:       from,
 		waveID:          waveID,
 		staffIDs:        staffIDs,
 		privateChannels: privateChannels,
@@ -156,7 +156,7 @@ func (e *Etl) FindAllTraineeThreads(ctx context.Context) ([]ImportedThread, erro
 		WHERE tm.user_id IN (?)
 		AND (t.created_at > ? OR t.updated_at > ?)
 		GROUP BY t.id, t.status, t.user_id, t.user_name, t.roles, t.created_at, t.closed_by_id`,
-		e.staffIDs, e.startDate, e.startDate,
+		e.staffIDs, e.StartDate, e.StartDate,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("building FindAllTraineeThreads query: %w", err)
@@ -272,7 +272,7 @@ func (e *Etl) FindAllTraineeCases(ctx context.Context) ([]ImportedCase, error) {
         FROM cases
         WHERE mod_id IN (?)
         AND created_at > ?`,
-		e.staffIDs, e.startDate,
+		e.staffIDs, e.StartDate,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("building FindAllTraineeCases query: %w", err)
@@ -363,7 +363,7 @@ FROM messages
 WHERE posted_at > ? 
 	AND user_id IN (`+userIDs+`)
   AND is_bot = 0
-GROUP BY user_id`, e.startDate); err != nil {
+GROUP BY user_id`, e.StartDate); err != nil {
 		return nil, err
 	}
 

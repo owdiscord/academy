@@ -51,7 +51,7 @@ func NewManager(cfg config.Config) (*Manager, error) {
 }
 
 func (m *Manager) AddImportJob(athDB *sqlx.DB, mmDB *sqlx.DB, outDB *database.DB) {
-	job, err := m.scheduler.NewJob(gocron.CronJob("0 * */3 * *", false), gocron.NewTask(func() {
+	job, err := m.scheduler.NewJob(gocron.CronJob("*/3 * * * *", false), gocron.NewTask(func() {
 		ctx := context.Background()
 		wave, err := outDB.GetLatestWave(ctx)
 		if err != nil {
@@ -71,7 +71,7 @@ func (m *Manager) AddImportJob(athDB *sqlx.DB, mmDB *sqlx.DB, outDB *database.DB
 		return
 	}
 
-	slog.Default().Info("adding import job to task queue", "cron", "0 * */3 * *", "id", job.ID())
+	slog.Default().Info("adding import job to task queue", "cron", "*/3 * * * *", "id", job.ID())
 }
 
 func (m *Manager) Start() {

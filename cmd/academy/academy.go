@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -56,10 +57,14 @@ func main() {
 	g.GET("/avatar/:userID", h.Avatar)
 
 	// Serve static frontend
-	e.Static("/assets", "frontend/assets")
-	e.GET("/*", func(c *echo.Context) error {
-		return c.File("./frontend/index.html")
-	})
+	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
+		Root:  "dist",
+		Index: "index.html",
+		HTML5: true, // fall back to index.html for unmatched paths
+		Skipper: func(c *echo.Context) bool {
+			return strings.HasPrefix(c.Path(), "/api")
+		},
+	}))
 
 	jobs, err := periodic.NewManager(*config)
 	if err != nil {

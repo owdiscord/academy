@@ -13,9 +13,12 @@ gleam_http = ">= 4.3.0 and < 5.0.0"
 lustre_dev_tools = ">= 2.3.6 and < 3.0.0"
 gleeunit = ">= 1.0.0 and < 2.0.0"
 
+
 [tools.lustre.dev]
 proxy = { from = "/api", to = "http://localhost:1323/api" }
 
 [tools.lustre.html]
+title = "Academy"
+lang = "en"
 stylesheets = [{ href = "https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" }]
 links = [{ href = "/icon.svg", type = "image/svg+xml", rel = "icon" }]

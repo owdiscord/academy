@@ -54,6 +54,7 @@ func main() {
 	g.GET("/questions", h.Questions)
 	g.GET("/stats", h.Stats)
 	g.GET("/avatar/:userID", h.Avatar)
+	g.Static("/", "frontend")
 
 	jobs, err := periodic.NewManager(*config)
 	if err != nil {

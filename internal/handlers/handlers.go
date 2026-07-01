@@ -16,19 +16,22 @@ import (
 	"github.com/owdiscord/academy/internal/config"
 	"github.com/owdiscord/academy/internal/database"
 	"github.com/owdiscord/academy/internal/discord"
+	"github.com/owdiscord/academy/internal/periodic"
 )
 
 type Handlers struct {
 	db           *database.DB
 	config       *config.Config
 	sessionCache *cache.Cache[string, database.Session]
+	jobManager   *periodic.Manager
 }
 
-func New(db *database.DB, config *config.Config) Handlers {
+func New(db *database.DB, config *config.Config, jobManager *periodic.Manager) Handlers {
 	return Handlers{
 		db:           db,
 		config:       config,
 		sessionCache: cache.New[string, database.Session](time.Minute * 3),
+		jobManager:   jobManager,
 	}
 }
 
@@ -249,6 +252,25 @@ func (h *Handlers) Stats(c *echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, stats)
+}
+
+func (h *Handlers) BackImport(c *echo.Context) error {
+	sess := c.Get("session_value").(*database.Session)
+	if sess.Role != "admin" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "only admin users can trigger a back import!"})
+	}
+
+	waveID, err := strconv.Atoi(c.Param("waveID"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "provided wave ID was not an integer"})
+	}
+
+	jobID, err := h.jobManager.TriggerImport(context.Background(), time.Date(2026, time.January, 1, 1, 1, 1, 1, time.UTC), nil, &waveID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not run job: " + err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{"message": "job triggered to run", "wave": waveID, "job_id": jobID.String()})
 }
 
 func (h *Handlers) Avatar(c *echo.Context) error {

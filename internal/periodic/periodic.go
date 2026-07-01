@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
+	"github.com/google/uuid"
 	"github.com/owdiscord/academy/internal/config"
 	"github.com/owdiscord/academy/internal/database"
 	"github.com/owdiscord/academy/internal/etl"
@@ -36,42 +37,96 @@ import (
 type Manager struct {
 	cfg       config.Config
 	scheduler gocron.Scheduler
+	athDB     *sqlx.DB
+	mmDB      *sqlx.DB
+	outDB     *database.DB
+	running   chan struct{} // acts as a 1-slot semaphore to prevent overlapping imports
 }
 
-func NewManager(cfg config.Config) (*Manager, error) {
+func NewManager(cfg config.Config, athDB, mmDB *sqlx.DB, outDB *database.DB) (*Manager, error) {
 	s, err := gocron.NewScheduler()
 	if err != nil {
 		return nil, err
 	}
-
 	return &Manager{
 		cfg:       cfg,
 		scheduler: s,
+		athDB:     athDB,
+		mmDB:      mmDB,
+		outDB:     outDB,
+		running:   make(chan struct{}, 1),
 	}, nil
 }
 
-func (m *Manager) AddImportJob(athDB *sqlx.DB, mmDB *sqlx.DB, outDB *database.DB) {
-	job, err := m.scheduler.NewJob(gocron.CronJob("*/3 * * * *", false), gocron.NewTask(func() {
-		ctx := context.Background()
-		wave, err := outDB.GetLatestWave(ctx)
-		if err != nil {
-			slog.Default().Error("could not get latest wave in import job", "err", err)
-		}
-		staff, err := outDB.GetWaveTrainees(ctx, wave.ID)
-		if err != nil {
-			slog.Default().Error("could not get trainees in import job", "err", err)
-		}
-
-		start := time.Now().Add(3 * (time.Minute * -1))
-		e := etl.New(67, start, athDB, mmDB, outDB.Conn(), staff, m.cfg.PrivateChannels)
-		ImportData(ctx, e)
-	}))
-	if err != nil {
-		fmt.Printf("[task] could not start order cleanup job: %v\n", err)
-		return
+// runImport is the actual work, decoupled from *how* it gets triggered.
+func (m *Manager) runImport(ctx context.Context, start time.Time, waveID *int) error {
+	select {
+	case m.running <- struct{}{}:
+		defer func() { <-m.running }()
+	default:
+		return fmt.Errorf("import already in progress")
 	}
 
+	var wave *database.Wave
+	if waveID != nil {
+		found, err := m.outDB.GetWaveByID(ctx, *waveID)
+		if err != nil {
+			return fmt.Errorf("could not get latest wave: %w", err)
+		}
+
+		wave = found
+	} else {
+		found, err := m.outDB.GetLatestWave(ctx)
+		if err != nil {
+			return fmt.Errorf("could not get latest wave: %w", err)
+		}
+
+		wave = found
+	}
+
+	staff, err := m.outDB.GetWaveTrainees(ctx, wave.ID)
+	if err != nil {
+		return fmt.Errorf("could not get trainees: %w", err)
+	}
+
+	e := etl.New(67, start, m.athDB, m.mmDB, m.outDB.Conn(), staff, m.cfg.PrivateChannels)
+	return ImportData(ctx, e)
+}
+
+// AddImportJob wires runImport into the recurring cron schedule.
+func (m *Manager) AddImportJob() {
+	job, err := m.scheduler.NewJob(gocron.CronJob("*/3 * * * *", false), gocron.NewTask(func() {
+		start := time.Now().Add(-3 * time.Minute)
+		if err := m.runImport(context.Background(), start, nil); err != nil {
+			slog.Default().Error("import job failed", "err", err)
+		}
+	}))
+	if err != nil {
+		slog.Default().Error("could not start import job", "err", err)
+		return
+	}
 	slog.Default().Info("adding import job to task queue", "cron", "*/3 * * * *", "id", job.ID())
+}
+
+// TriggerImport lets external callers (like your HTTP handler) run an import
+// on demand with a custom start time, either immediately or at a future time.
+func (m *Manager) TriggerImport(ctx context.Context, start time.Time, runAt *time.Time, waveID *int) (uuid.UUID, error) {
+	var jobDef gocron.JobDefinition
+	if runAt != nil {
+		jobDef = gocron.OneTimeJob(gocron.OneTimeJobStartDateTime(*runAt))
+	} else {
+		jobDef = gocron.OneTimeJob(gocron.OneTimeJobStartImmediately())
+	}
+
+	job, err := m.scheduler.NewJob(jobDef, gocron.NewTask(func() {
+		if err := m.runImport(ctx, start, waveID); err != nil {
+			slog.Default().Error("triggered import job failed", "err", err)
+		}
+	}))
+	if err != nil {
+		return uuid.UUID{}, err
+	}
+	return job.ID(), nil
 }
 
 func (m *Manager) Start() {

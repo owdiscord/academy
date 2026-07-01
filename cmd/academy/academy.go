@@ -30,7 +30,26 @@ func main() {
 		log.Fatalf("cannot connect to database: %+v\n", err)
 	}
 
-	h := handlers.New(db, config)
+	// Cron-timed periodic jobs
+	modmailDB, err := sqlx.Connect("mysql", config.ModmailDBURI)
+	if err != nil {
+		log.Fatalf("could not connect to modmail database: %v", err)
+	}
+
+	athenaDB, err := sqlx.Connect("mysql", config.AthenaDBURI)
+	if err != nil {
+		log.Fatalf("could not connect to athena database: %v", err)
+	}
+
+	jobs, err := periodic.NewManager(*config, athenaDB, modmailDB, db)
+	if err != nil {
+		log.Fatalf("cannot create job manager: %+v\n", err)
+	}
+
+	jobs.AddImportJob()
+	jobs.Start()
+
+	h := handlers.New(db, config, jobs)
 
 	// Start the web app
 	e := echo.New()
@@ -54,6 +73,7 @@ func main() {
 	g.PUT("/issues/id", h.CreateIssue)
 	g.GET("/questions", h.Questions)
 	g.GET("/stats", h.Stats)
+	g.GET("/import/:waveID", h.BackImport)
 	g.GET("/avatar/:userID", h.Avatar)
 
 	// Serve static frontend
@@ -65,24 +85,6 @@ func main() {
 			return strings.HasPrefix(c.Path(), "/api")
 		},
 	}))
-
-	jobs, err := periodic.NewManager(*config)
-	if err != nil {
-		log.Fatalf("cannot create job manager: %+v\n", err)
-	}
-
-	modmailDB, err := sqlx.Connect("mysql", config.ModmailDBURI)
-	if err != nil {
-		log.Fatalf("could not connect to modmail database: %v", err)
-	}
-
-	athenaDB, err := sqlx.Connect("mysql", config.AthenaDBURI)
-	if err != nil {
-		log.Fatalf("could not connect to athena database: %v", err)
-	}
-
-	jobs.AddImportJob(athenaDB, modmailDB, db)
-	jobs.Start()
 
 	e.Start(":1323")
 }

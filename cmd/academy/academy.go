@@ -9,6 +9,8 @@ import (
 	"github.com/owdiscord/academy/internal/database"
 	"github.com/owdiscord/academy/internal/handlers"
 	"github.com/owdiscord/academy/internal/migrations"
+	"github.com/owdiscord/academy/internal/periodic"
+	"github.com/vinovest/sqlx"
 )
 
 func main() {
@@ -52,6 +54,24 @@ func main() {
 	g.GET("/questions", h.Questions)
 	g.GET("/stats", h.Stats)
 	g.GET("/avatar/:userID", h.Avatar)
+
+	jobs, err := periodic.NewManager(*config)
+	if err != nil {
+		log.Fatalf("cannot create job manager: %+v\n", err)
+	}
+
+	modmailDB, err := sqlx.Connect("mysql", config.ModmailDBURI)
+	if err != nil {
+		log.Fatalf("could not connect to modmail database: %v", err)
+	}
+
+	athenaDB, err := sqlx.Connect("mysql", config.AthenaDBURI)
+	if err != nil {
+		log.Fatalf("could not connect to athena database: %v", err)
+	}
+
+	jobs.AddImportJob(athenaDB, modmailDB, db)
+	jobs.Start()
 
 	e.Start(":1323")
 }

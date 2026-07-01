@@ -58,7 +58,7 @@ func main() {
 
 	// Serve static frontend
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{
-		Root:  "dist",
+		Root:  "./frontend/dist",
 		Index: "index.html",
 		HTML5: true, // fall back to index.html for unmatched paths
 		Skipper: func(c *echo.Context) bool {

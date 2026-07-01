@@ -36,14 +36,14 @@ type Etl struct {
 	outDB           *sqlx.DB
 }
 
-func New(wave *database.Wave, athenaDB *sqlx.DB, modmailDB *sqlx.DB, outDB *sqlx.DB, staff []database.Staff, privateChannels []string) *Etl {
+func New(waveID int, from time.Time, athenaDB *sqlx.DB, modmailDB *sqlx.DB, outDB *sqlx.DB, staff []database.Staff, privateChannels []string) *Etl {
 	staffIDs := []string{}
 	statCollection := map[string]*DateStatParams{}
 
 	for _, member := range staff {
 		staffIDs = append(staffIDs, member.Snowflake)
 		statCollection[member.Snowflake] = &DateStatParams{
-			WaveID:         wave.ID,
+			WaveID:         waveID,
 			UserID:         member.ID,
 			PublicMsgs:     0,
 			PrivateMsgs:    0,
@@ -56,8 +56,8 @@ func New(wave *database.Wave, athenaDB *sqlx.DB, modmailDB *sqlx.DB, outDB *sqlx
 	}
 
 	return &Etl{
-		startDate:       wave.BeginAt,
-		waveID:          wave.ID,
+		startDate:       from,
+		waveID:          waveID,
 		staffIDs:        staffIDs,
 		privateChannels: privateChannels,
 		statCollection:  statCollection,
@@ -174,7 +174,7 @@ func (e *Etl) FindThreadMessages(ctx context.Context, threadID string) ([]Import
 	messages := []ImportedThreadMessage{}
 	if err := e.mmDB.SelectContext(ctx, &messages, `
 		SELECT id, thread_id, message_type AS kind, user_id, user_name,
-		       body, created_at, attachments, metadata, is_anonymous, role_name
+		       body, created_at, COALESCE(attachments, '[]') attachments, COALESCE(metadata, '{}') metadata, is_anonymous, COALESCE(role_name, 'Unknown') role_name
 		FROM thread_messages
 		WHERE thread_id = ?
 		ORDER BY created_at ASC`,
@@ -401,8 +401,12 @@ ON DUPLICATE KEY UPDATE
 	return err
 }
 
-func (e *Etl) SaveAllDateStats(ctx context.Context, tx *sqlx.Tx) {
+func (e *Etl) SaveAllDateStats(ctx context.Context, tx *sqlx.Tx) error {
 	for _, stats := range e.statCollection {
-		e.SaveDateStatsForUser(ctx, tx, *stats)
+		if err := e.SaveDateStatsForUser(ctx, tx, *stats); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }

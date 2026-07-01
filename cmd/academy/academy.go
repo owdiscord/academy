@@ -54,7 +54,12 @@ func main() {
 	g.GET("/questions", h.Questions)
 	g.GET("/stats", h.Stats)
 	g.GET("/avatar/:userID", h.Avatar)
-	g.Static("/", "frontend")
+
+	// Serve static frontend
+	e.Static("/assets", "frontend/assets")
+	e.GET("/*", func(c *echo.Context) error {
+		return c.File("./frontend/index.html")
+	})
 
 	jobs, err := periodic.NewManager(*config)
 	if err != nil {

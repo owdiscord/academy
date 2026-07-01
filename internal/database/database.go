@@ -34,7 +34,15 @@ func New(databaseURI string) (*DB, error) {
 	}, nil
 }
 
+func (db *DB) Conn() *sqlx.DB {
+	return db.conn
+}
+
 func URLtoDSN(databaseURL string) (string, error) {
+	if !strings.HasPrefix(databaseURL, "mysql://") {
+		databaseURL = "mysql://" + databaseURL
+	}
+
 	u, err := url.Parse(databaseURL)
 	if err != nil {
 		return "", err

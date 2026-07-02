@@ -152,7 +152,7 @@ func (h *Handlers) Wave(c *echo.Context) error {
 }
 
 func (h *Handlers) Threads(c *echo.Context) error {
-	threads, err := h.db.GetAllThreads(c.Request().Context())
+	threads, err := h.db.GetAllThreads(c.Request().Context(), 1, 200)
 	if err != nil {
 		c.Logger().Error("could not get threads", "db", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve threads"})
@@ -177,7 +177,7 @@ func (h *Handlers) Thread(c *echo.Context) error {
 }
 
 func (h *Handlers) Cases(c *echo.Context) error {
-	cases, err := h.db.GetAllCases(c.Request().Context())
+	cases, err := h.db.GetAllCases(c.Request().Context(), 1, 200)
 	if err != nil {
 		c.Logger().Error("could not get cases", "db", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve cases"})

@@ -36,10 +36,10 @@ type ThreadMessage struct {
 	Metadata    JSONMap         `db:"metadata" json:"metadata"`
 }
 
-func (db *DB) GetAllThreads(ctx context.Context) ([]Thread, error) {
+func (db *DB) GetAllThreads(ctx context.Context, page, limit int) ([]Thread, error) {
 	threads := []Thread{}
 
-	if err := db.conn.SelectContext(ctx, &threads, "SELECT id, status, wave_id, user_id, user_name, UNIX_TIMESTAMP(created_at) created_at, closed_by_id, roles, participants, inbound_messages, outbound_messages, chat_messages FROM threads ORDER BY created_at DESC"); err != nil {
+	if err := db.conn.SelectContext(ctx, &threads, "SELECT id, status, wave_id, user_id, user_name, UNIX_TIMESTAMP(created_at) created_at, closed_by_id, roles, participants, inbound_messages, outbound_messages, chat_messages FROM threads LIMIT ? OFFSET ? ORDER BY created_at DESC", limit, (page-1)*limit); err != nil {
 		return nil, err
 	}
 

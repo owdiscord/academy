@@ -27,10 +27,10 @@ type CaseNote struct {
 	CreatedAt int    `db:"created_at" json:"created_at"`
 }
 
-func (db *DB) GetAllCases(ctx context.Context) ([]Case, error) {
+func (db *DB) GetAllCases(ctx context.Context, page, limit int) ([]Case, error) {
 	cases := []Case{}
 
-	if err := db.conn.SelectContext(ctx, &cases, "SELECT c.id, c.case_number, c.mod_id, COALESCE(s.username, 'Unknown') mod_name, c.actioned_user_id, c.actioned_user_name, UNIX_TIMESTAMP(c.created_at) created_at, c.type FROM cases c LEFT JOIN staff s ON s.snowflake = c.mod_id ORDER BY created_at DESC"); err != nil {
+	if err := db.conn.SelectContext(ctx, &cases, "SELECT c.id, c.case_number, c.mod_id, COALESCE(s.username, 'Unknown') mod_name, c.actioned_user_id, c.actioned_user_name, UNIX_TIMESTAMP(c.created_at) created_at, c.type FROM cases c LEFT JOIN staff s ON s.snowflake = c.mod_id LIMIT ? OFFSET ? ORDER BY created_at DESC", limit, (page-1)*limit); err != nil {
 		return nil, err
 	}
 

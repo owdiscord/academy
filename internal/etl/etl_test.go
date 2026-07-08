@@ -36,11 +36,11 @@ func TestMain(m *testing.M) {
 	start := time.Date(2020, time.January, 1, 1, 1, 1, 1, time.UTC)
 	e = &Etl{
 		StartDate:       start,
-		waveID:          67,
+		WaveID:          67,
 		mmDB:            mockDB,
 		athDB:           mockDB,
 		outDB:           out,
-		staffIDs:        []string{"204084691425427466"},
+		StaffIDs:        []string{"204084691425427466"},
 		privateChannels: config.PrivateChannels,
 	}
 

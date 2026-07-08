@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -90,7 +91,9 @@ func (h *Handlers) AuthCallback(c *echo.Context) error {
 		}
 
 		if user.AvatarHash != discordUser.Avatar {
-			if err := discord.DownloadAvatar(*discordUser, "./avatars/"); err != nil {
+			_ = os.MkdirAll("./avatars/"+discordUser.ID, 0755)
+
+			if err := discord.DownloadAvatar(*discordUser, "./avatars/"+discordUser.ID+"/"); err != nil {
 				c.Logger().Error("could not download avatar", "userid", discordUser.ID, "discord_avatar_hash", discordUser.Avatar, "io_err", err)
 			}
 		}
@@ -154,13 +157,28 @@ func (h *Handlers) Wave(c *echo.Context) error {
 }
 
 func (h *Handlers) Threads(c *echo.Context) error {
-	threads, err := h.db.GetAllThreads(c.Request().Context(), 1, 200)
+	sess := c.Get("session_value").(*database.Session)
+	waveID := sess.WaveID
+
+	total, err := h.db.TotalThreadCount(c.Request().Context(), waveID)
+	if err != nil {
+		c.Logger().Error("could not get thread count", "db", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not count total threads for this wave"})
+	}
+
+	page, limit := pagination(c)
+	threads, err := h.db.GetAllThreads(c.Request().Context(), waveID, page, limit)
 	if err != nil {
 		c.Logger().Error("could not get threads", "db", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve threads"})
 	}
 
-	return c.JSON(http.StatusOK, threads)
+	return c.JSON(http.StatusOK, map[string]any{
+		"total":   total,
+		"page":    page,
+		"pages":   math.Ceil(float64(total) / float64(limit)),
+		"threads": threads,
+	})
 }
 
 func (h *Handlers) Thread(c *echo.Context) error {
@@ -179,13 +197,28 @@ func (h *Handlers) Thread(c *echo.Context) error {
 }
 
 func (h *Handlers) Cases(c *echo.Context) error {
-	cases, err := h.db.GetAllCases(c.Request().Context(), 1, 200)
+	sess := c.Get("session_value").(*database.Session)
+	waveID := sess.WaveID
+
+	total, err := h.db.TotalThreadCount(c.Request().Context(), waveID)
+	if err != nil {
+		c.Logger().Error("could not get case count", "db", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not count total cases for this wave"})
+	}
+
+	page, limit := pagination(c)
+	cases, err := h.db.GetAllCases(c.Request().Context(), waveID, page, limit)
 	if err != nil {
 		c.Logger().Error("could not get cases", "db", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve cases"})
 	}
 
-	return c.JSON(http.StatusOK, cases)
+	return c.JSON(http.StatusOK, map[string]any{
+		"total": total,
+		"page":  page,
+		"pages": math.Ceil(float64(total) / float64(limit)),
+		"cases": cases,
+	})
 }
 
 func (h *Handlers) Case(c *echo.Context) error {
@@ -267,7 +300,7 @@ func (h *Handlers) BackImport(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "provided wave ID was not an integer"})
 	}
 
-	jobID, err := h.jobManager.TriggerImport(context.Background(), time.Date(2026, time.January, 1, 1, 1, 1, 1, time.UTC), nil, &waveID)
+	jobID, err := h.jobManager.TriggerImport(context.Background(), time.Date(2025, time.January, 1, 1, 1, 1, 1, time.UTC), nil, &waveID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not run job: " + err.Error()})
 	}
@@ -276,12 +309,13 @@ func (h *Handlers) BackImport(c *echo.Context) error {
 }
 
 func (h *Handlers) Avatar(c *echo.Context) error {
-	userID := c.Param("userID")[:len(c.Param("userID"))-len(filepath.Ext(c.Param("userID")))]
-	if _, err := os.Stat("./avatars/" + userID + ".png"); err != nil {
+	userID := c.Param("userID")
+	avatarHash := c.Param("avatarHash")[:len(c.Param("avatarHash"))-len(filepath.Ext(c.Param("avatarHash")))]
+	if _, err := os.Stat("./avatars/" + userID + "/" + avatarHash + ".png"); err != nil {
 		return c.File("./avatars/default.png")
 	}
 
-	return c.File("./avatars/" + userID + ".png")
+	return c.File("./avatars/" + userID + "/" + avatarHash + ".png")
 }
 
 // -- Middleware ----
@@ -311,4 +345,25 @@ func (h *Handlers) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authentication expired or not provided"})
 	}
+}
+
+func pagination(c *echo.Context) (int, int) {
+	var params struct {
+		Page  int `query:"page"`
+		Limit int `query:"limit"`
+	}
+
+	if err := c.Bind(&params); err != nil {
+		return 1, 200
+	}
+
+	if params.Page < 1 {
+		params.Page = 1
+	}
+
+	if params.Limit < 1 {
+		params.Limit = 200
+	}
+
+	return params.Page, params.Limit
 }

@@ -27,10 +27,19 @@ type CaseNote struct {
 	CreatedAt int    `db:"created_at" json:"created_at"`
 }
 
-func (db *DB) GetAllCases(ctx context.Context, page, limit int) ([]Case, error) {
+func (db *DB) TotalCaseCount(ctx context.Context, waveID int) (int, error) {
+	count := 0
+	if err := db.Conn().GetContext(ctx, &count, "SELECT COUNT(*) FROM cases WHERE wave_id = ?", waveID); err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func (db *DB) GetAllCases(ctx context.Context, waveID, page, limit int) ([]Case, error) {
 	cases := []Case{}
 
-	if err := db.conn.SelectContext(ctx, &cases, "SELECT c.id, c.case_number, c.mod_id, COALESCE(s.username, 'Unknown') mod_name, c.actioned_user_id, c.actioned_user_name, UNIX_TIMESTAMP(c.created_at) created_at, c.type FROM cases c LEFT JOIN staff s ON s.snowflake = c.mod_id ORDER BY created_at DESC LIMIT ? OFFSET ?", limit, (page-1)*limit); err != nil {
+	if err := db.conn.SelectContext(ctx, &cases, "SELECT c.id, c.case_number, c.mod_id, COALESCE(s.username, 'Unknown') mod_name, c.actioned_user_id, c.actioned_user_name, UNIX_TIMESTAMP(c.created_at) created_at, c.type FROM cases c LEFT JOIN staff s ON s.snowflake = c.mod_id WHERE c.wave_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?", waveID, limit, (page-1)*limit); err != nil {
 		return nil, err
 	}
 
@@ -40,7 +49,7 @@ func (db *DB) GetAllCases(ctx context.Context, page, limit int) ([]Case, error) 
 func (db *DB) GetCaseByID(ctx context.Context, id int) (*Case, error) {
 	modCase := Case{}
 
-	if err := db.conn.GetContext(ctx, &modCase, "SELECT c.id, c.case_number, c.mod_id, COALESCE(s.username, 'Unknown') mod_name, c.actioned_user_id, c.actioned_user_name, UNIX_TIMESTAMP(c.created_at) created_at, c.type FROM cases c LEFT JOIN staff s ON s.snowflake = c.mod_id WHERE c.id = ?", id); err != nil {
+	if err := db.conn.GetContext(ctx, &modCase, "SELECT c.id, c.case_number, c.mod_id, COALESCE(s.username, 'Unknown') mod_name, c.actioned_user_id, c.actioned_user_name, UNIX_TIMESTAMP(c.created_at) created_at, c.type FROM cases c LEFT JOIN staff s ON s.snowflake = c.mod_id WHERE c.id = ? LIMIT 1", id); err != nil {
 		return nil, fmt.Errorf("case(%d): %v", id, err)
 	}
 

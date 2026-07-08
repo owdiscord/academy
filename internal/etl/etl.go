@@ -27,8 +27,8 @@ import (
 
 type Etl struct {
 	StartDate       time.Time
-	waveID          int
-	staffIDs        []string
+	WaveID          int
+	StaffIDs        []string
 	privateChannels []string
 	statCollection  map[string]*DateStatParams
 	athDB           *sqlx.DB
@@ -57,8 +57,8 @@ func New(waveID int, from time.Time, athenaDB *sqlx.DB, modmailDB *sqlx.DB, outD
 
 	return &Etl{
 		StartDate:       from,
-		waveID:          waveID,
-		staffIDs:        staffIDs,
+		WaveID:          waveID,
+		StaffIDs:        staffIDs,
 		privateChannels: privateChannels,
 		statCollection:  statCollection,
 		athDB:           athenaDB,
@@ -156,7 +156,7 @@ func (e *Etl) FindAllTraineeThreads(ctx context.Context) ([]ImportedThread, erro
 		WHERE tm.user_id IN (?)
 		AND (t.created_at > ? OR t.updated_at > ?)
 		GROUP BY t.id, t.status, t.user_id, t.user_name, t.roles, t.created_at, t.closed_by_id`,
-		e.staffIDs, e.StartDate, e.StartDate,
+		e.StaffIDs, e.StartDate, e.StartDate,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("building FindAllTraineeThreads query: %w", err)
@@ -196,7 +196,7 @@ func (e *Etl) InsertImportedThread(ctx context.Context, tx *sqlx.Tx, thread Impo
 			status       = new_data.status,
 			closed_by_id = new_data.closed_by_id`,
 		thread.ID, thread.Status, thread.UserID, thread.UserName,
-		thread.CreatedAt, thread.ClosedByID, thread.Roles, thread.InboundMessages, thread.OutboundMessages, thread.ChatMessages, e.waveID,
+		thread.CreatedAt, thread.ClosedByID, thread.Roles, thread.InboundMessages, thread.OutboundMessages, thread.ChatMessages, e.WaveID,
 	)
 	if err != nil {
 		return fmt.Errorf("InsertImportedThread(%s): %w", thread.ID, err)
@@ -272,7 +272,7 @@ func (e *Etl) FindAllTraineeCases(ctx context.Context) ([]ImportedCase, error) {
         FROM cases
         WHERE mod_id IN (?)
         AND created_at > ?`,
-		e.staffIDs, e.StartDate,
+		e.StaffIDs, e.StartDate,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("building FindAllTraineeCases query: %w", err)
@@ -311,7 +311,7 @@ func (e *Etl) InsertImportedCase(ctx context.Context, tx *sqlx.Tx, c ImportedCas
         ON DUPLICATE KEY UPDATE
             mod_id        = new_data.mod_id`,
 		c.ID, c.CaseNumber, c.UserID, c.UserName,
-		c.ModID, c.Type, c.CreatedAt, e.waveID,
+		c.ModID, c.Type, c.CreatedAt, e.WaveID,
 	)
 	if err != nil {
 		return fmt.Errorf("InsertImportedCase(%d): %w", c.ID, err)
@@ -348,7 +348,7 @@ type MessageStat struct {
 
 func (e *Etl) GetMessageStats(ctx context.Context, tx *sqlx.Tx) ([]MessageStat, error) {
 	chanIDs := strings.Join(e.privateChannels, ", ")
-	userIDs := strings.Join(e.staffIDs, ", ")
+	userIDs := strings.Join(e.StaffIDs, ", ")
 
 	stats := []MessageStat{}
 

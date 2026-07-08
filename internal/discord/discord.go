@@ -84,7 +84,7 @@ func DownloadAvatar(user DiscordUser, outPath string) error {
 		return errors.New("failed to download image: status " + resp.Status)
 	}
 
-	out, err := os.Create(outPath + user.ID + ".png")
+	out, err := os.Create(outPath + user.Avatar + ".png")
 	if err != nil {
 		return err
 	}

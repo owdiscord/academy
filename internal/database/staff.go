@@ -40,7 +40,7 @@ func (db *DB) GetWaveTrainees(ctx context.Context, waveID int) ([]Staff, error) 
 
 func (db *DB) GetStaffDetails(ctx context.Context, userID int, waveID int) (*Staff, error) {
 	var staff Staff
-	if err := db.conn.GetContext(ctx, &staff, "SELECT id, wave_id, snowflake, username, display_name, role FROM staff WHERE id = ? AND wave_id = ?", userID, waveID); err != nil {
+	if err := db.conn.GetContext(ctx, &staff, "SELECT id, wave_id, snowflake, avatar_hash, username, display_name, role FROM staff WHERE id = ? AND wave_id = ?", userID, waveID); err != nil {
 		return nil, err
 	}
 

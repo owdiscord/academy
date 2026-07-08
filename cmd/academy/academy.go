@@ -9,12 +9,15 @@ import (
 	"github.com/owdiscord/academy/internal/config"
 	"github.com/owdiscord/academy/internal/database"
 	"github.com/owdiscord/academy/internal/handlers"
+	"github.com/owdiscord/academy/internal/logger"
 	"github.com/owdiscord/academy/internal/migrations"
 	"github.com/owdiscord/academy/internal/periodic"
 	"github.com/vinovest/sqlx"
 )
 
 func main() {
+	logger.Config()
+
 	config, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
@@ -74,7 +77,7 @@ func main() {
 	g.GET("/questions", h.Questions)
 	g.GET("/stats", h.Stats)
 	g.GET("/import/:waveID", h.BackImport)
-	g.GET("/avatar/:userID", h.Avatar)
+	g.GET("/avatar/:userID/:avatarHash", h.Avatar)
 
 	// Serve static frontend
 	e.Use(middleware.StaticWithConfig(middleware.StaticConfig{

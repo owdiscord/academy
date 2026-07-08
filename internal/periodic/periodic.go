@@ -48,6 +48,7 @@ func NewManager(cfg config.Config, athDB, mmDB *sqlx.DB, outDB *database.DB) (*M
 	if err != nil {
 		return nil, err
 	}
+
 	return &Manager{
 		cfg:       cfg,
 		scheduler: s,
@@ -89,7 +90,7 @@ func (m *Manager) runImport(ctx context.Context, start time.Time, waveID *int) e
 		return fmt.Errorf("could not get trainees: %w", err)
 	}
 
-	e := etl.New(67, start, m.athDB, m.mmDB, m.outDB.Conn(), staff, m.cfg.PrivateChannels)
+	e := etl.New(wave.ID, start, m.athDB, m.mmDB, m.outDB.Conn(), staff, m.cfg.PrivateChannels)
 	return ImportData(ctx, e)
 }
 
@@ -134,7 +135,8 @@ func (m *Manager) Start() {
 }
 
 func ImportData(ctx context.Context, e *etl.Etl) error {
-	slog.Default().Info("running data import", "time", e.StartDate)
+	slog.Info("running data import", "time", e.StartDate)
+	slog.Debug("wave information for import", "trainees", e.StaffIDs, "wave_id", e.WaveID)
 	tx, err := e.OutTx()
 	if err != nil {
 		return fmt.Errorf("could not begin transaction: %w", err)
@@ -149,6 +151,8 @@ func ImportData(ctx context.Context, e *etl.Etl) error {
 	if err != nil {
 		return fmt.Errorf("ImportData: fetching threads: %w", err)
 	}
+
+	slog.Debug("threads found for context", "count", len(threads))
 
 	for _, thread := range threads {
 		if err := e.InsertImportedThread(ctx, tx, thread); err != nil {

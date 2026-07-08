@@ -399,14 +399,15 @@ fn user_role_decoder() -> decode.Decoder(UserRole) {
 }
 
 type User {
-  User(id: String, display_name: String, role: UserRole)
+  User(id: String, avatar_hash: String, display_name: String, role: UserRole)
 }
 
 fn user_decoder() -> decode.Decoder(User) {
   use id <- decode.field("snowflake", decode.string)
   use display_name <- decode.field("display_name", decode.string)
+  use avatar_hash <- decode.field("avatar_hash", decode.string)
   use role <- decode.field("role", user_role_decoder())
-  decode.success(User(id:, display_name:, role:))
+  decode.success(User(id:, avatar_hash:, display_name:, role:))
 }
 
 type Toast {
@@ -443,6 +444,7 @@ type Model {
     threads_closed: Bool,
     thread_trainee: Option(String),
     view_commands: Bool,
+    searching: Bool,
     modal: Modal,
   )
 }
@@ -490,7 +492,12 @@ fn init(_) -> #(Model, Effect(Message)) {
         trainees: [],
       ),
       cases: [],
-      user: User(id: "system", display_name: "Unknown", role: UnknownUser),
+      user: User(
+        id: "system",
+        avatar_hash: "",
+        display_name: "Unknown",
+        role: UnknownUser,
+      ),
       issues: [],
       threads: [],
       trainees: [],
@@ -503,6 +510,7 @@ fn init(_) -> #(Model, Effect(Message)) {
       threads_closed: True,
       thread_trainee: None,
       view_commands: False,
+      searching: False,
       // modal: ThreadIssueModal("a", 0, "c"),
       modal: ClosedModal,
     ),
@@ -809,30 +817,48 @@ fn view(model: Model) -> Element(Message) {
                     }),
                   ]),
                   html.nav([], [
-                    html.details([class("relative")], [
-                      html.summary(
-                        [
-                          class(
-                            "flex items-center gap-3 font-semibold cursor-pointer rounded-md py-2 px-3 border border-transparent transition-colors hover:border-gray-800 hover:bg-gray-1000",
-                          ),
-                        ],
-                        [
-                          html.img([
-                            attribute.src(avatar(model.user.id)),
-                            class("size-7 rounded-full"),
-                          ]),
-                          html.text(model.user.display_name),
-                          icons.chevron_down([class("size-4")]),
-                        ],
-                      ),
-                      html.ul([class("absolute top-full right-0 bg-black")], [
-                        html.li([], [
-                          html.a([attribute.href("/api/auth/logout")], [
-                            html.text("Logout"),
-                          ]),
-                        ]),
-                      ]),
-                    ]),
+                    html.details(
+                      [class("relative"), attribute.attribute("open", "true")],
+                      [
+                        html.summary(
+                          [
+                            class(
+                              "flex items-center gap-3 font-semibold cursor-pointer rounded-md py-2 px-3 border border-transparent transition-colors hover:border-gray-800 hover:bg-gray-1000",
+                            ),
+                          ],
+                          [
+                            html.img([
+                              attribute.src(avatar(model.user)),
+                              class("size-7 rounded-full"),
+                            ]),
+                            html.text(model.user.display_name),
+                            icons.chevron_down([class("size-4")]),
+                          ],
+                        ),
+                        html.ul(
+                          [
+                            class(
+                              "absolute top-full right-0 bg-gray-850 rounded-md border border-gray-800 p-1 z-50",
+                            ),
+                          ],
+                          [
+                            html.li([], [
+                              html.a(
+                                [
+                                  attribute.href("/api/auth/logout"),
+                                  class(
+                                    "rounded-md py-1 px-2 flex items-center gap-2 font-semibold",
+                                  ),
+                                ],
+                                [
+                                  html.text("Logout"),
+                                ],
+                              ),
+                            ]),
+                          ],
+                        ),
+                      ],
+                    ),
                   ]),
                 ],
               ),
@@ -1167,7 +1193,7 @@ fn threads_sidebar(model: Model) {
                             [class("flex")],
                             list.map(thread.participants, fn(snowflake) {
                               html.img([
-                                attribute.src(avatar(snowflake)),
+                                attribute.src(""),
                                 class(
                                   "size-7 rounded-full bg-blue-400 border border-gray-800 not-last:-mr-2",
                                 ),
@@ -1238,7 +1264,7 @@ fn cases_sidebar(model: Model) {
     ]),
 
     keyed.ul(
-      [class("grid gap-2 px-4 overflow-y-auto flex-1 pb-6")],
+      [class("grid items-start gap-2 px-4 overflow-y-auto flex-1 pb-6")],
       list.map(model.cases, fn(mod_case) {
         #(
           "case#" <> int.to_string(mod_case.id),
@@ -1524,10 +1550,7 @@ fn stats_view(model: Model) {
                 html.figure(
                   [
                     class("size-14 rounded-full bg-black bg-cover bg-center"),
-                    attribute.style(
-                      "background-image",
-                      "url(" <> avatar(trainee.id) <> ")",
-                    ),
+                    attribute.style("background-image", "url(" <> "" <> ")"),
                   ],
                   [],
                 ),
@@ -1607,7 +1630,7 @@ fn thread_view(model: Model, thread: ModmailThread) {
             html.li([], [
               html.img([
                 class("rounded-full size-8"),
-                attribute.src(avatar(participant)),
+                attribute.src(""),
                 attribute.alt("Participant avatar"),
               ]),
             ])
@@ -1637,8 +1660,9 @@ fn thread_view(model: Model, thread: ModmailThread) {
                   class("size-11 rounded-full bg-black"),
                   attribute.alt(message.user_name <> "'s Avatar"),
                   attribute.src(case message.kind {
-                    IncomingMsg -> avatar("system")
-                    _ -> avatar(message.user_id)
+                    IncomingMsg -> ""
+                    _ -> ""
+                    // avatar(message.user_id)
                   }),
                 ]),
               ]),
@@ -1949,7 +1973,17 @@ fn get_questions() -> Effect(Message) {
 
 fn get_threads() -> Effect(Message) {
   let handler =
-    rsvp.expect_json(decode.list(modmail_thread_decoder()), ApiReturnedThreads)
+    rsvp.expect_json(
+      {
+        use threads <- decode.field(
+          "threads",
+          decode.list(modmail_thread_decoder()),
+        )
+        decode.success(threads)
+      },
+      ApiReturnedThreads,
+    )
+
   rsvp.get(base_url <> "/api/threads", handler)
 }
 
@@ -1960,7 +1994,14 @@ fn get_thread(id: String) -> Effect(Message) {
 
 fn get_cases() -> Effect(Message) {
   let handler =
-    rsvp.expect_json(decode.list(athena_case_decoder()), ApiReturnedCases)
+    rsvp.expect_json(
+      {
+        use threads <- decode.field("cases", decode.list(athena_case_decoder()))
+        decode.success(threads)
+      },
+      ApiReturnedCases,
+    )
+
   rsvp.get(base_url <> "/api/cases", handler)
 }
 
@@ -2068,6 +2109,6 @@ fn rsvp_err_to_toast(
   |> dispatch
 }
 
-fn avatar(snowflake: String) {
-  base_url <> "/api/avatar/" <> snowflake <> ".png"
+fn avatar(user: User) {
+  base_url <> "/api/avatar/" <> user.id <> "/" <> user.avatar_hash <> ".png"
 }

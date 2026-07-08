@@ -61,7 +61,7 @@ func (h *Handlers) AuthCallback(c *echo.Context) error {
 	// Look up user in DB
 	user, err := h.db.LatestUserForDiscordID(c.Request().Context(), discordUser.ID)
 	if err != nil || user == nil {
-		c.Logger().Error("unknown user attempted to access", "discord_id", discordUser.ID, "name", discordUser.GlobalName)
+		c.Logger().Error("unknown user attempted to access", "discord_id", discordUser.ID, "name", discordUser.GlobalName, "db_err", err)
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "You are not authorized to access this page."})
 	}
 
@@ -89,8 +89,10 @@ func (h *Handlers) AuthCallback(c *echo.Context) error {
 			c.Logger().Error("could not update user details", "userid", discordUser.ID, "db_err", err)
 		}
 
-		if err := discord.DownloadAvatar(*discordUser, "./avatars/"); err != nil {
-			c.Logger().Error("could not download avatar", "userid", discordUser.ID, "avatar_hash", discordUser.Avatar, "io_err", err)
+		if user.AvatarHash != discordUser.Avatar {
+			if err := discord.DownloadAvatar(*discordUser, "./avatars/"); err != nil {
+				c.Logger().Error("could not download avatar", "userid", discordUser.ID, "discord_avatar_hash", discordUser.Avatar, "io_err", err)
+			}
 		}
 	}()
 

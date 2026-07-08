@@ -13,19 +13,25 @@ type Staff struct {
 	Username    string `db:"username" json:"username"`
 	DisplayName string `db:"display_name" json:"display_name"`
 	Role        string `db:"role" json:"role,omitempty"`
+	AvatarHash  string `db:"avatar_hash" json:"avatar_hash"`
+	HasAvatar   bool   `db:"has_avatar" json:"has_avatar"`
 }
 
 func (db *DB) UpdateUserDetails(ctx context.Context, details discord.DiscordUser) error {
-	if _, err := db.conn.ExecContext(ctx, "UPDATE staff SET username = ?, display_name = ? WHERE snowflake = ?", details.Username, details.GlobalName, details.ID); err != nil {
-		return err
-	}
-
-	return nil
+	_, err := db.conn.ExecContext(ctx, `
+		UPDATE staff
+		SET username = ?,
+		display_name = ?,
+		has_avatar = IF(CHAR_LENGTH(COALESCE(?, '')) > 0, true, has_avatar),
+		avatar_hash = ? 
+		WHERE snowflake = ?
+	`, details.Username, details.GlobalName, details.Avatar, details.Avatar, details.ID)
+	return err
 }
 
 func (db *DB) GetWaveTrainees(ctx context.Context, waveID int) ([]Staff, error) {
 	staff := []Staff{}
-	if err := db.conn.SelectContext(ctx, &staff, "SELECT snowflake, username, display_name FROM staff WHERE wave_id = ? AND role = 'trainee'", waveID); err != nil {
+	if err := db.conn.SelectContext(ctx, &staff, "SELECT id, snowflake, username, display_name FROM staff WHERE wave_id = ? AND role = 'trainee'", waveID); err != nil {
 		return nil, err
 	}
 
@@ -43,7 +49,7 @@ func (db *DB) GetStaffDetails(ctx context.Context, userID int, waveID int) (*Sta
 
 func (db *DB) LatestUserForDiscordID(ctx context.Context, snowflake string) (*Staff, error) {
 	var staff Staff
-	if err := db.conn.GetContext(ctx, &staff, "SELECT id, wave_id, snowflake, username, display_name, role FROM staff WHERE snowflake = ? ORDER BY wave_id LIMIT 1", snowflake); err != nil {
+	if err := db.conn.GetContext(ctx, &staff, "SELECT id, wave_id, snowflake, username, display_name, role, COALESCE(avatar_hash, '') avatar_hash FROM staff WHERE snowflake = ? ORDER BY wave_id LIMIT 1", snowflake); err != nil {
 		return nil, err
 	}
 

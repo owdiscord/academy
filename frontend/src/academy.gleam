@@ -1671,7 +1671,7 @@ fn stats_view(model: Model) {
           ]),
 
           keyed.ul(
-            [class("grid lg:col-span-3 gap-4")],
+            [class("flex flex-col lg:col-span-3 gap-4 h-full overflow-y-auto")],
             list.map(stats.trainee_stats, fn(trainee) {
               #(
                 "trainee#" <> trainee.snowflake,

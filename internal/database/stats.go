@@ -5,12 +5,16 @@ import (
 )
 
 type TraineeStat struct {
-	Username           string `db:"username" json:"username"`
-	UserID             string `db:"user_id" json:"user_id"`
-	MessageCount       int    `db:"message_count" json:"message_count"`
-	ParticipationCount int    `db:"thread_participation_count" json:"thread_participation_count"`
-	ThreadCount        int    `db:"thread_count" json:"thread_count"`
-	CaseCount          int    `db:"case_count" json:"case_count"`
+	ID              string `db:"id" json:"id"`
+	Username        string `db:"username" json:"username"`
+	Snowflake       string `db:"snowflake" json:"snowflake"`
+	PublicMessages  int    `db:"public_messages" json:"public_messages"`
+	PrivateMessages int    `db:"private_messages" json:"private_messages"`
+	Cases           int    `db:"cases" json:"cases"`
+	ThreadChat      int    `db:"thread_chat" json:"thread_chat"`
+	ThreadReplies   int    `db:"thread_replies" json:"thread_replies"`
+	ThreadClosures  int    `db:"thread_closures" json:"thread_closures"`
+	SnippetsUsed    int    `db:"snippets_used" json:"snippets_used"`
 }
 
 type StatsOverview struct {
@@ -35,7 +39,22 @@ type StatsPerDate struct {
 func (db *DB) GetStatsOverview(ctx context.Context, waveID int) (*StatsOverview, error) {
 	trainees := []TraineeStat{}
 
-	if err := db.conn.SelectContext(ctx, &trainees, "SELECT snowflake user_id, username, thread_participation_count, message_count, thread_count, case_count FROM staff WHERE role = 'trainee' AND wave_id = ?", waveID); err != nil {
+	if err := db.conn.SelectContext(ctx, &trainees, `SELECT
+    st.id,
+    st.snowflake,
+	st.username,
+    COALESCE(SUM(sp.public_messages), 0)  AS public_messages,
+    COALESCE(SUM(sp.private_messages), 0) AS private_messages,
+    COALESCE(SUM(sp.cases), 0)            AS cases,
+    COALESCE(SUM(sp.thread_chat), 0)      AS thread_chat,
+    COALESCE(SUM(sp.thread_replies), 0)   AS thread_replies,
+    COALESCE(SUM(sp.thread_closures), 0)  AS thread_closures,
+    COALESCE(SUM(sp.snippets_used), 0)    AS snippets_used
+FROM staff st
+LEFT JOIN stats_per_date sp ON sp.user_id = st.id
+WHERE st.wave_id = ?
+GROUP BY st.id, st.snowflake
+ORDER BY st.id`, waveID); err != nil {
 		return nil, err
 	}
 

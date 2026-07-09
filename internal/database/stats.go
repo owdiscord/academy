@@ -5,7 +5,7 @@ import (
 )
 
 type TraineeStat struct {
-	ID              string `db:"id" json:"id"`
+	ID              int    `db:"id" json:"id"`
 	Username        string `db:"username" json:"username"`
 	Snowflake       string `db:"snowflake" json:"snowflake"`
 	PublicMessages  int    `db:"public_messages" json:"public_messages"`
@@ -52,7 +52,7 @@ func (db *DB) GetStatsOverview(ctx context.Context, waveID int) (*StatsOverview,
     COALESCE(SUM(sp.snippets_used), 0)    AS snippets_used
 FROM staff st
 LEFT JOIN stats_per_date sp ON sp.user_id = st.id
-WHERE st.wave_id = ?
+WHERE st.wave_id = ? AND st.role = 'trainee'
 GROUP BY st.id, st.snowflake
 ORDER BY st.id`, waveID); err != nil {
 		return nil, err

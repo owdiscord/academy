@@ -412,32 +412,42 @@ fn user_decoder() -> decode.Decoder(User) {
 
 type TraineeStats {
   TraineeStats(
+    id: Int,
     username: String,
-    user_id: String,
-    message_count: Int,
-    thread_participation_count: Int,
-    thread_count: Int,
-    case_count: Int,
+    snowflake: String,
+    private_messages: Int,
+    public_messages: Int,
+    thread_chat: Int,
+    thread_replies: Int,
+    thread_closures: Int,
+    snippets_used: Int,
+    cases: Int,
   )
 }
 
 fn trainee_stats_decoder() -> decode.Decoder(TraineeStats) {
+  use id <- decode.field("id", decode.int)
   use username <- decode.field("username", decode.string)
-  use user_id <- decode.field("user_id", decode.string)
-  use message_count <- decode.field("message_count", decode.int)
-  use thread_participation_count <- decode.field(
-    "thread_participation_count",
-    decode.int,
-  )
-  use thread_count <- decode.field("thread_count", decode.int)
-  use case_count <- decode.field("case_count", decode.int)
+  use snowflake <- decode.field("snowflake", decode.string)
+  use private_messages <- decode.field("private_messages", decode.int)
+  use public_messages <- decode.field("public_messages", decode.int)
+  use thread_chat <- decode.field("thread_chat", decode.int)
+  use thread_replies <- decode.field("thread_replies", decode.int)
+  use thread_closures <- decode.field("thread_closures", decode.int)
+  use snippets_used <- decode.field("snippets_used", decode.int)
+  use cases <- decode.field("cases", decode.int)
+
   decode.success(TraineeStats(
+    id:,
     username:,
-    user_id:,
-    message_count:,
-    thread_participation_count:,
-    thread_count:,
-    case_count:,
+    snowflake:,
+    private_messages:,
+    public_messages:,
+    thread_chat:,
+    thread_replies:,
+    thread_closures:,
+    snippets_used:,
+    cases:,
   ))
 }
 
@@ -1590,114 +1600,122 @@ fn questions_view(user: User, questions: List(String)) {
 
 fn stats_view(model: Model) {
   html.main([class("p-6 bg-gray-900 h-full")], [
-    html.section([class("grid lg:grid-cols-3 gap-8")], [
-      html.article(
-        [
-          class(
-            "bg-gray-800 border border-gray-750 rounded-xl p-8 flex items-center gap-8",
-          ),
-        ],
-        [
-          html.figure([class("p-4 rounded-lg bg-orange-500/10")], [
-            icons.envelope([class("size-8 text-orange-300")]),
-          ]),
-          html.div([], [
-            html.h1([class("text-3xl font-extrabold text-white")], [
-              html.text(int.to_string(model.total_threads)),
-            ]),
-            html.h3([class("text-gray-300")], [
-              html.text("Threads"),
-            ]),
-          ]),
-        ],
-      ),
-      html.article(
-        [
-          class(
-            "bg-gray-800 border border-gray-750 rounded-xl p-8 flex items-center gap-8",
-          ),
-        ],
-        [
-          html.figure([class("p-4 rounded-lg bg-blue-500/10")], [
-            icons.cases([class("size-8 text-blue-300")]),
-          ]),
-          html.div([], [
-            html.h1([class("text-3xl font-extrabold text-white")], [
-              html.text(int.to_string(model.total_cases)),
-            ]),
-            html.h3([class("text-gray-300")], [
-              html.text("Cases"),
-            ]),
-          ]),
-        ],
-      ),
-      html.article(
-        [
-          class(
-            "bg-gray-800 border border-gray-750 rounded-xl p-8 flex items-center gap-8",
-          ),
-        ],
-        [
-          html.figure([class("p-4 rounded-lg bg-rose-500/10")], [
-            icons.issues([class("size-8 text-rose-300")]),
-          ]),
-          html.div([], [
-            html.h1([class("text-3xl font-extrabold text-white")], [
-              html.text(int.to_string(model.total_issues)),
-            ]),
-            html.h3([class("text-gray-300")], [
-              html.text("Issues"),
-            ]),
-          ]),
-        ],
-      ),
-
-      html.header([class("")], [
-        html.h3([class("text-xl font-bold text-white")], [
-          html.text("Trainees"),
-        ]),
-      ]),
-
-      keyed.ul(
-        [class("grid lg:col-span-3 gap-4")],
-        list.map(model.trainees, fn(trainee) {
-          #(
-            "trainee#" <> trainee.id,
-            html.li(
-              [
-                class(
-                  "rounded flex items-center gap-4 p-2 hover:bg-gray-800 transition-colors",
-                ),
-              ],
-              [
-                html.figure(
-                  [
-                    class("size-14 rounded-full bg-black bg-cover bg-center"),
-                    attribute.style("background-image", "url(" <> "" <> ")"),
-                  ],
-                  [],
-                ),
-                html.div([], [
-                  html.h3([class("font-semibold text-lg text-ow-mod")], [
-                    html.text(trainee.username),
-                  ]),
-                  html.p([class("text-gray-300")], [
-                    html.text(
-                      int.to_string(trainee.message_count)
-                      <> " messages, "
-                      <> int.to_string(trainee.thread_participation_count)
-                      <> " threads participated in, "
-                      <> int.to_string(trainee.case_count)
-                      <> " cases",
-                    ),
-                  ]),
+    case model.stats {
+      Some(stats) ->
+        html.section([class("grid lg:grid-cols-3 gap-8")], [
+          html.article(
+            [
+              class(
+                "bg-gray-800 border border-gray-750 rounded-xl p-8 flex items-center gap-8",
+              ),
+            ],
+            [
+              html.figure([class("p-4 rounded-lg bg-orange-500/10")], [
+                icons.envelope([class("size-8 text-orange-300")]),
+              ]),
+              html.div([], [
+                html.h1([class("text-3xl font-extrabold text-white")], [
+                  html.text(int.to_string(stats.thread_count)),
                 ]),
-              ],
-            ),
-          )
-        }),
-      ),
-    ]),
+                html.h3([class("text-gray-300")], [
+                  html.text("Threads"),
+                ]),
+              ]),
+            ],
+          ),
+          html.article(
+            [
+              class(
+                "bg-gray-800 border border-gray-750 rounded-xl p-8 flex items-center gap-8",
+              ),
+            ],
+            [
+              html.figure([class("p-4 rounded-lg bg-blue-500/10")], [
+                icons.cases([class("size-8 text-blue-300")]),
+              ]),
+              html.div([], [
+                html.h1([class("text-3xl font-extrabold text-white")], [
+                  html.text(int.to_string(stats.case_count)),
+                ]),
+                html.h3([class("text-gray-300")], [
+                  html.text("Cases"),
+                ]),
+              ]),
+            ],
+          ),
+          html.article(
+            [
+              class(
+                "bg-gray-800 border border-gray-750 rounded-xl p-8 flex items-center gap-8",
+              ),
+            ],
+            [
+              html.figure([class("p-4 rounded-lg bg-rose-500/10")], [
+                icons.issues([class("size-8 text-rose-300")]),
+              ]),
+              html.div([], [
+                html.h1([class("text-3xl font-extrabold text-white")], [
+                  html.text(int.to_string(stats.issue_count)),
+                ]),
+                html.h3([class("text-gray-300")], [
+                  html.text("Issues"),
+                ]),
+              ]),
+            ],
+          ),
+
+          html.header([class("")], [
+            html.h3([class("text-xl font-bold text-white")], [
+              html.text("Trainees"),
+            ]),
+          ]),
+
+          keyed.ul(
+            [class("grid lg:col-span-3 gap-4")],
+            list.map(stats.trainee_stats, fn(trainee) {
+              #(
+                "trainee#" <> trainee.snowflake,
+                html.li(
+                  [
+                    class(
+                      "rounded flex items-center gap-4 p-2 hover:bg-gray-800 transition-colors",
+                    ),
+                  ],
+                  [
+                    html.figure(
+                      [
+                        class(
+                          "size-14 rounded-full bg-black bg-cover bg-center",
+                        ),
+                        attribute.style("background-image", "url(" <> "" <> ")"),
+                      ],
+                      [],
+                    ),
+                    html.div([], [
+                      html.h3([class("font-semibold text-lg text-ow-mod")], [
+                        html.text(trainee.username),
+                      ]),
+                      html.p([class("text-gray-300")], [
+                        html.text(
+                          int.to_string(trainee.public_messages)
+                          <> " public messages, "
+                          <> int.to_string(trainee.private_messages)
+                          <> " staff messages, "
+                          <> int.to_string(trainee.thread_closures)
+                          <> " threads closed, "
+                          <> int.to_string(trainee.cases)
+                          <> " cases",
+                        ),
+                      ]),
+                    ]),
+                  ],
+                ),
+              )
+            }),
+          ),
+        ])
+      None -> html.div([], [])
+    },
   ])
 }
 

@@ -410,6 +410,100 @@ fn user_decoder() -> decode.Decoder(User) {
   decode.success(User(id:, avatar_hash:, display_name:, role:))
 }
 
+type TraineeStats {
+  TraineeStats(
+    username: String,
+    user_id: String,
+    message_count: Int,
+    thread_participation_count: Int,
+    thread_count: Int,
+    case_count: Int,
+  )
+}
+
+fn trainee_stats_decoder() -> decode.Decoder(TraineeStats) {
+  use username <- decode.field("username", decode.string)
+  use user_id <- decode.field("user_id", decode.string)
+  use message_count <- decode.field("message_count", decode.int)
+  use thread_participation_count <- decode.field(
+    "thread_participation_count",
+    decode.int,
+  )
+  use thread_count <- decode.field("thread_count", decode.int)
+  use case_count <- decode.field("case_count", decode.int)
+  decode.success(TraineeStats(
+    username:,
+    user_id:,
+    message_count:,
+    thread_participation_count:,
+    thread_count:,
+    case_count:,
+  ))
+}
+
+type Statistics {
+  Statistics(
+    case_count: Int,
+    thread_count: Int,
+    message_count: Int,
+    issue_count: Int,
+    trainee_stats: List(TraineeStats),
+  )
+}
+
+fn statistics_decoder() -> decode.Decoder(Statistics) {
+  use case_count <- decode.field("case_count", decode.int)
+  use thread_count <- decode.field("thread_count", decode.int)
+  use message_count <- decode.field("message_count", decode.int)
+  use issue_count <- decode.field("issue_count", decode.int)
+  use trainee_stats <- decode.field(
+    "trainee_stats",
+    decode.list(trainee_stats_decoder()),
+  )
+
+  decode.success(Statistics(
+    case_count:,
+    thread_count:,
+    message_count:,
+    issue_count:,
+    trainee_stats:,
+  ))
+}
+
+type PerDateStatistics {
+  PerDateStatistics(
+    date: String,
+    public_messages: Int,
+    private_message: Int,
+    thread_chat: Int,
+    thread_replies: Int,
+    thread_closures: Int,
+    cases: Int,
+    snippets_used: Int,
+  )
+}
+
+fn per_date_statistics_decoder() -> decode.Decoder(PerDateStatistics) {
+  use date <- decode.field("date", decode.string)
+  use public_messages <- decode.field("public_messages", decode.int)
+  use private_message <- decode.field("private_message", decode.int)
+  use thread_chat <- decode.field("thread_chat", decode.int)
+  use thread_replies <- decode.field("thread_replies", decode.int)
+  use thread_closures <- decode.field("thread_closures", decode.int)
+  use cases <- decode.field("cases", decode.int)
+  use snippets_used <- decode.field("snippets_used", decode.int)
+  decode.success(PerDateStatistics(
+    date:,
+    public_messages:,
+    private_message:,
+    thread_chat:,
+    thread_replies:,
+    thread_closures:,
+    cases:,
+    snippets_used:,
+  ))
+}
+
 type Toast {
   ToastError(msg: String)
   ToastSuccess(msg: String)
@@ -444,6 +538,7 @@ type Model {
     threads_closed: Bool,
     thread_trainee: Option(String),
     view_commands: Bool,
+    stats: Option(Statistics),
     searching: Bool,
     modal: Modal,
   )
@@ -511,6 +606,7 @@ fn init(_) -> #(Model, Effect(Message)) {
       thread_trainee: None,
       view_commands: False,
       searching: False,
+      stats: None,
       // modal: ThreadIssueModal("a", 0, "c"),
       modal: ClosedModal,
     ),
@@ -539,6 +635,10 @@ type Message {
   ApiReturnedCase(Result(AthenaCase, rsvp.Error(String)))
   ApiReturnedIssues(Result(List(Issue), rsvp.Error(String)))
   ApiReturnedQuestions(Result(List(String), rsvp.Error(String)))
+  ApiReturnedStats(Result(Statistics, rsvp.Error(String)))
+  ApiReturnedUserStats(
+    Result(#(User, List(PerDateStatistics)), rsvp.Error(String)),
+  )
 
   ApiReturnedNoAuth
 
@@ -655,6 +755,23 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
     ApiReturnedIssues(Ok(issues)) -> #(Model(..model, issues:), effect.none())
 
     ApiReturnedIssues(Error(err)) -> #(model, rsvp_err_to_toast("issues", err))
+
+    ApiReturnedStats(Ok(stats)) -> #(
+      Model(..model, stats: Some(stats)),
+      effect.none(),
+    )
+
+    ApiReturnedStats(Error(err)) -> #(model, rsvp_err_to_toast("stats", err))
+
+    ApiReturnedUserStats(Ok(stats)) -> {
+      echo stats
+      #(model, effect.none())
+    }
+
+    ApiReturnedUserStats(Error(err)) -> #(
+      model,
+      rsvp_err_to_toast("user stats", err),
+    )
 
     ApiReturnedNoAuth -> #(Model(..model, authenticated: False), effect.none())
 
@@ -817,48 +934,45 @@ fn view(model: Model) -> Element(Message) {
                     }),
                   ]),
                   html.nav([], [
-                    html.details(
-                      [class("relative"), attribute.attribute("open", "true")],
-                      [
-                        html.summary(
-                          [
-                            class(
-                              "flex items-center gap-3 font-semibold cursor-pointer rounded-md py-2 px-3 border border-transparent transition-colors hover:border-gray-800 hover:bg-gray-1000",
+                    html.details([class("relative")], [
+                      html.summary(
+                        [
+                          class(
+                            "flex items-center gap-3 font-semibold cursor-pointer rounded-md py-2 px-3 border border-transparent transition-colors hover:border-gray-800 hover:bg-gray-1000",
+                          ),
+                        ],
+                        [
+                          html.img([
+                            attribute.src(avatar(model.user)),
+                            class("size-7 rounded-full"),
+                          ]),
+                          html.text(model.user.display_name),
+                          icons.chevron_down([class("size-4")]),
+                        ],
+                      ),
+                      html.ul(
+                        [
+                          class(
+                            "absolute top-full right-0 bg-gray-900 rounded-md border border-gray-800 p-1 z-50",
+                          ),
+                        ],
+                        [
+                          html.li([], [
+                            html.a(
+                              [
+                                attribute.href("/api/auth/logout"),
+                                class(
+                                  "rounded-md py-1 px-2 flex items-center gap-2 font-semibold",
+                                ),
+                              ],
+                              [
+                                html.text("Logout"),
+                              ],
                             ),
-                          ],
-                          [
-                            html.img([
-                              attribute.src(avatar(model.user)),
-                              class("size-7 rounded-full"),
-                            ]),
-                            html.text(model.user.display_name),
-                            icons.chevron_down([class("size-4")]),
-                          ],
-                        ),
-                        html.ul(
-                          [
-                            class(
-                              "absolute top-full right-0 bg-gray-850 rounded-md border border-gray-800 p-1 z-50",
-                            ),
-                          ],
-                          [
-                            html.li([], [
-                              html.a(
-                                [
-                                  attribute.href("/api/auth/logout"),
-                                  class(
-                                    "rounded-md py-1 px-2 flex items-center gap-2 font-semibold",
-                                  ),
-                                ],
-                                [
-                                  html.text("Logout"),
-                                ],
-                              ),
-                            ]),
-                          ],
-                        ),
-                      ],
-                    ),
+                          ]),
+                        ],
+                      ),
+                    ]),
                   ]),
                 ],
               ),
@@ -895,7 +1009,7 @@ fn view(model: Model) -> Element(Message) {
 
                 Cases -> html.div([], [])
 
-                Case(id:, content: option.None) ->
+                Case(content: option.None, ..) ->
                   html.div([class("p-6")], [
                     html.div(
                       [
@@ -1109,7 +1223,7 @@ fn threads_sidebar(model: Model) {
     ]),
 
     keyed.ul(
-      [class("grid gap-2 px-4 overflow-y-auto flex-1 pb-6")],
+      [class("flex flex-col gap-2 px-4 overflow-y-auto flex-1 pb-6")],
       case filtered_threads(model) {
         [] -> [
           #(
@@ -1191,7 +1305,7 @@ fn threads_sidebar(model: Model) {
                         html.dt([class("ml-auto")], [
                           html.div(
                             [class("flex")],
-                            list.map(thread.participants, fn(snowflake) {
+                            list.map(thread.participants, fn(_snowflake) {
                               html.img([
                                 attribute.src(""),
                                 class(
@@ -1210,6 +1324,13 @@ fn threads_sidebar(model: Model) {
           })
       },
     ),
+    html.footer([], [
+      html.nav([], [
+        html.button([], [html.text("Back")]),
+        html.span([], [html.text("Page 1")]),
+        html.button([], [html.text("Next")]),
+      ]),
+    ]),
   ])
 }
 
@@ -1264,7 +1385,9 @@ fn cases_sidebar(model: Model) {
     ]),
 
     keyed.ul(
-      [class("grid items-start gap-2 px-4 overflow-y-auto flex-1 pb-6")],
+      [
+        class("flex flex-col gap-2 px-4 overflow-y-auto flex-1 pb-6"),
+      ],
       list.map(model.cases, fn(mod_case) {
         #(
           "case#" <> int.to_string(mod_case.id),
@@ -1626,7 +1749,7 @@ fn thread_view(model: Model, thread: ModmailThread) {
         ),
         html.ul(
           [],
-          list.map(thread.participants, fn(participant) {
+          list.map(thread.participants, fn(_participant) {
             html.li([], [
               html.img([
                 class("rounded-full size-8"),
@@ -1750,7 +1873,7 @@ fn thread_view(model: Model, thread: ModmailThread) {
   ])
 }
 
-fn case_view(model: Model, mod_case: AthenaCase) {
+fn case_view(_model: Model, mod_case: AthenaCase) {
   html.div([class("py-6 px-6 block h-full overflow-y-auto")], [
     html.header([], []),
     keyed.ul(
@@ -2016,6 +2139,28 @@ fn get_issues() -> Effect(Message) {
   rsvp.get(base_url <> "/api/issues", handler)
 }
 
+fn get_stats() -> Effect(Message) {
+  let handler = rsvp.expect_json(statistics_decoder(), ApiReturnedStats)
+  rsvp.get(base_url <> "/api/stats", handler)
+}
+
+// fn get_user_stats(user_id: Int) -> Effect(Message) {
+//   let handler =
+//     rsvp.expect_json(
+//       {
+//         use user <- decode.field("user", user_decoder())
+//         use stats <- decode.field(
+//           "stats",
+//           decode.list(per_date_statistics_decoder()),
+//         )
+//
+//         decode.success(#(user, stats))
+//       },
+//       ApiReturnedUserStats,
+//     )
+//   rsvp.get(base_url <> "/api/stats/user/" <> int.to_string(user_id), handler)
+// }
+
 //
 // Custom effects
 //
@@ -2070,7 +2215,7 @@ fn route_effects(route: Route) -> Effect(Message) {
     Thread(id:, content: option.None) -> [get_threads(), get_thread(id)]
     Cases -> [get_cases()]
     Case(id:, content: option.None) -> [get_cases(), get_case(id)]
-    Stats -> []
+    Stats -> [get_stats()]
     Issues -> [get_issues()]
     InterviewQuestions -> [
       get_questions(),

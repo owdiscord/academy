@@ -49,8 +49,8 @@ func main() {
 		log.Fatalf("cannot create job manager: %+v\n", err)
 	}
 
-	jobs.AddImportJob()
-	jobs.Start()
+	// jobs.AddImportJob()
+	// jobs.Start()
 
 	h := handlers.New(db, config, jobs)
 
@@ -76,6 +76,7 @@ func main() {
 	g.PUT("/issues/id", h.CreateIssue)
 	g.GET("/questions", h.Questions)
 	g.GET("/stats", h.Stats)
+	g.GET("/stats/user/:userID", h.UserStats)
 	g.GET("/import/:waveID", h.BackImport)
 	g.GET("/avatar/:userID/:avatarHash", h.Avatar)
 
@@ -89,5 +90,7 @@ func main() {
 		},
 	}))
 
-	e.Start(":1323")
+	if err := e.Start(":1323"); err != nil {
+		log.Fatalf("could not open web server: %v\n", err)
+	}
 }

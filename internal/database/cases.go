@@ -10,6 +10,7 @@ import (
 type Case struct {
 	ID               int        `db:"id" json:"id"`
 	CaseNumber       int        `db:"case_number" json:"case_number,omitempty"`
+	ModAvatar        string     `db:"mod_avatar" json:"mod_avatar"`
 	ModID            string     `db:"mod_id" json:"mod_id"`
 	ModName          string     `db:"mod_name" json:"mod_name"`
 	ActionedUserID   string     `db:"actioned_user_id" json:"actioned_user_id"`
@@ -39,7 +40,7 @@ func (db *DB) TotalCaseCount(ctx context.Context, waveID int) (int, error) {
 func (db *DB) GetAllCases(ctx context.Context, waveID, page, limit int) ([]Case, error) {
 	cases := []Case{}
 
-	if err := db.conn.SelectContext(ctx, &cases, "SELECT c.id, c.case_number, c.mod_id, COALESCE(s.username, 'Unknown') mod_name, c.actioned_user_id, c.actioned_user_name, UNIX_TIMESTAMP(c.created_at) created_at, c.type FROM cases c LEFT JOIN staff s ON s.snowflake = c.mod_id WHERE c.wave_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?", waveID, limit, (page-1)*limit); err != nil {
+	if err := db.conn.SelectContext(ctx, &cases, "SELECT c.id, c.case_number, c.mod_id, COALESCE(s.username, 'Unknown') mod_name, COALESCE(CONCAT(s.snowflake, '/', s.avatar_hash, '.png'), 'system.png') mod_avatar, c.actioned_user_id, c.actioned_user_name, UNIX_TIMESTAMP(c.created_at) created_at, c.type FROM cases c INNER JOIN staff s ON s.snowflake = c.mod_id AND s.wave_id = ? WHERE c.wave_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?", waveID, waveID, limit, (page-1)*limit); err != nil {
 		return nil, err
 	}
 

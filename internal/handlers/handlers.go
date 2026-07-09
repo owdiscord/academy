@@ -124,7 +124,7 @@ func (h *Handlers) Me(c *echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "cannot retrieve your session"})
 	}
 
-	staff, err := h.db.GetStaffDetails(c.Request().Context(), session.UserID, session.WaveID)
+	staff, err := h.db.GetStaffDetails(c.Request().Context(), session.UserID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "cannot retrieve user details"})
 	}
@@ -200,7 +200,7 @@ func (h *Handlers) Cases(c *echo.Context) error {
 	sess := c.Get("session_value").(*database.Session)
 	waveID := sess.WaveID
 
-	total, err := h.db.TotalThreadCount(c.Request().Context(), waveID)
+	total, err := h.db.TotalCaseCount(c.Request().Context(), waveID)
 	if err != nil {
 		c.Logger().Error("could not get case count", "db", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not count total cases for this wave"})
@@ -287,6 +287,35 @@ func (h *Handlers) Stats(c *echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, stats)
+}
+
+func (h *Handlers) UserStats(c *echo.Context) error {
+	userID, err := strconv.Atoi(c.Param("userID"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "given user ID was not a valid integer"})
+	}
+
+	sess := c.Get("session_value").(*database.Session)
+	if sess.Role == "trainee" {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve or calculate stats"})
+	}
+
+	stats, err := h.db.GetStatsForStaff(c.Request().Context(), userID)
+	if err != nil {
+		c.Logger().Error("could not get stats", "user_id", userID, "err", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve or calculate stats"})
+	}
+
+	user, err := h.db.GetStaffDetails(c.Request().Context(), userID)
+	if err != nil {
+		c.Logger().Error("could not get user in stats route", "user_id", userID, "err", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not retrieve that user"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"user":  user,
+		"stats": stats,
+	})
 }
 
 func (h *Handlers) BackImport(c *echo.Context) error {

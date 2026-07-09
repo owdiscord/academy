@@ -18,11 +18,13 @@ FROM ghcr.io/gleam-lang/gleam:${GLEAM_VERSION}-erlang-alpine AS front_builder
 
 COPY ./frontend /build/frontend
 
-# Install deps
+# Build lustre project
 RUN cd /build/frontend \
   && rm -rf build/ \
   && gleam run -m lustre/dev build --minify
 
+# Append asset hashes for the frontend so we avoid caching problems
+RUN cd /build/frontend && sh append-hash.sh
 
 # Runner stage
 FROM scratch

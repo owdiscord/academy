@@ -173,7 +173,7 @@ func (e *Etl) FindAllTraineeThreads(ctx context.Context) ([]ImportedThread, erro
 func (e *Etl) FindThreadMessages(ctx context.Context, threadID string) ([]ImportedThreadMessage, error) {
 	messages := []ImportedThreadMessage{}
 	if err := e.mmDB.SelectContext(ctx, &messages, `
-		SELECT id, thread_id, message_type AS kind, user_id, user_name,
+		SELECT id, thread_id, message_type AS kind, COALESCE(user_id, '') user_id, user_name,
 		       body, created_at, COALESCE(attachments, '[]') attachments, COALESCE(metadata, '{}') metadata, is_anonymous, COALESCE(role_name, 'Unknown') role_name
 		FROM thread_messages
 		WHERE thread_id = ?

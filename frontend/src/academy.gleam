@@ -9,6 +9,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import gleam/time/calendar
+import gleam/time/duration
 import gleam/time/timestamp
 import gleam/uri
 import lustre
@@ -1460,7 +1461,7 @@ fn cases_sidebar(model: Model) {
                   html.p([], [
                     html.text("Created "),
                     html.time([class("bg-gray-750 rounded-sm px-1")], [
-                      html.text("June 24th, 2026"),
+                      html.text(timeago(mod_case.created_at)),
                     ]),
                   ]),
                 ]),
@@ -2274,4 +2275,37 @@ fn rsvp_err_to_toast(
 
 fn avatar(user: User) {
   base_url <> "/api/avatar/" <> user.id <> "/" <> user.avatar_hash <> ".png"
+}
+
+fn timeago(then: timestamp.Timestamp) -> String {
+  let now = timestamp.system_time()
+  let elapsed = timestamp.difference(then, now)
+  let #(seconds, _nanoseconds) = duration.to_seconds_and_nanoseconds(elapsed)
+
+  case seconds {
+    s if s < 10 -> "just now"
+    s if s < 60 -> plural(s, "second")
+    s if s < 3600 -> plural(s / 60, "minute")
+    s if s < 86_400 -> plural(s / 3600, "hour")
+    s if s < 604_800 -> plural(s / 86_400, "day")
+    _ -> format_date(then)
+  }
+}
+
+fn plural(count: Int, unit: String) -> String {
+  case count {
+    1 -> "1 " <> unit <> " ago"
+    _ -> int.to_string(count) <> " " <> unit <> "s ago"
+  }
+}
+
+fn format_date(then: timestamp.Timestamp) -> String {
+  let #(date, _time_of_day) = timestamp.to_calendar(then, calendar.utc_offset)
+  let calendar.Date(year, month, day) = date
+
+  int.to_string(day)
+  <> " "
+  <> calendar.month_to_string(month)
+  <> " "
+  <> int.to_string(year)
 }

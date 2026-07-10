@@ -49,8 +49,8 @@ func main() {
 		log.Fatalf("cannot create job manager: %+v\n", err)
 	}
 
-	// jobs.AddImportJob()
-	// jobs.Start()
+	jobs.AddImportJob()
+	jobs.Start()
 
 	h := handlers.New(db, config, jobs)
 

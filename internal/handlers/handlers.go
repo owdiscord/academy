@@ -329,7 +329,12 @@ func (h *Handlers) BackImport(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "provided wave ID was not an integer"})
 	}
 
-	jobID, err := h.jobManager.TriggerImport(context.Background(), time.Date(2025, time.January, 1, 1, 1, 1, 1, time.UTC), nil, &waveID)
+	startDate, err := time.Parse(time.DateOnly, c.QueryParamOr("date", "2026-01-01"))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "invalid date passed. required format: YYYY-MM-DD (eg 2006-01-02)"})
+	}
+
+	jobID, err := h.jobManager.TriggerImport(context.Background(), startDate, nil, &waveID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "could not run job: " + err.Error()})
 	}

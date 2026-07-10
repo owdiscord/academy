@@ -257,6 +257,7 @@ fn thread_status_decoder() -> decode.Decoder(ThreadStatus) {
 type ModmailThread {
   ModmailThread(
     id: String,
+    created_at: timestamp.Timestamp,
     user_name: String,
     user_id: String,
     status: ThreadStatus,
@@ -265,18 +266,25 @@ type ModmailThread {
     chat_messages: Int,
     roles: List(String),
     participants: List(String),
+    participant_avatars: List(String),
     messages: List(ThreadMsg),
   )
 }
 
 fn modmail_thread_decoder() -> decode.Decoder(ModmailThread) {
   use id <- decode.field("id", decode.string)
+  use created_at <- decode.field("created_at", timestamp_decoder())
   use user_name <- decode.field("user_name", decode.string)
   use user_id <- decode.field("user_id", decode.string)
   use status <- decode.field("status", thread_status_decoder())
   use inbound_messages <- decode.field("inbound_messages", decode.int)
   use outbound_messages <- decode.field("outbound_messages", decode.int)
   use chat_messages <- decode.field("chat_messages", decode.int)
+  use participant_avatars <- decode.optional_field(
+    "participant_avatars",
+    [],
+    decode.list(decode.string),
+  )
   use participants <- decode.field("participants", decode.list(decode.string))
   use messages <- decode.optional_field(
     "messages",
@@ -288,6 +296,7 @@ fn modmail_thread_decoder() -> decode.Decoder(ModmailThread) {
 
   decode.success(ModmailThread(
     id:,
+    created_at:,
     user_name:,
     user_id:,
     status:,
@@ -295,6 +304,7 @@ fn modmail_thread_decoder() -> decode.Decoder(ModmailThread) {
     outbound_messages:,
     chat_messages:,
     participants:,
+    participant_avatars:,
     roles:,
     messages:,
   ))
@@ -1734,15 +1744,16 @@ fn thread_view(model: Model, thread: ModmailThread) {
           <> thread.user_name,
         ),
       ]),
-      html.p([class("mb-4")], [
+      html.ul([class("mb-4 flex flex-wrap gap-3")], [
         html.code(
           [
             class(
               "font-monospace border border-gray-800 rounded-md inline-block px-3",
             ),
           ],
-          [html.text("user #" <> thread.user_id)],
+          [html.text("" <> thread.user_id)],
         ),
+        html.time([], [html.text(timeago(thread.created_at))]),
       ]),
       html.div([class("flex justify-between gap-6 items-center")], [
         html.ul(

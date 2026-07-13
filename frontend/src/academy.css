@@ -52,12 +52,6 @@ body {
     border-bottom: var(--color-gray-900) 1px solid;
     height: calc(var(--spacing) * 20);
     font-weight: bold;
-
-    & svg:first-child {
-      color: var(--color-ow-orange);
-      width: calc(var(--spacing) * 10);
-      height: calc(var(--spacing) * 10);
-    }
   }
 
   & ul {
@@ -96,6 +90,18 @@ body {
 
     & svg {
       color: var(--color-ow-orange);
+    }
+  }
+
+  @media (max-width: 992px) {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+
+    &:not(.open) {
+      transform: translateX(-100%);
     }
   }
 }

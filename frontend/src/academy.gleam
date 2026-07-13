@@ -539,6 +539,8 @@ type Modal {
 type Model {
   Model(
     route: Route,
+    sidebar_open: Bool,
+    nav_open: Bool,
     authenticated: Bool,
     toasts: dict.Dict(Int, Toast),
     wave: Wave,
@@ -597,6 +599,8 @@ fn init(_) -> #(Model, Effect(Message)) {
     Model(
       authenticated: False,
       route:,
+      sidebar_open: False,
+      nav_open: False,
       toasts: dict.new(),
       loading: False,
       wave: Wave(
@@ -718,10 +722,11 @@ fn update(model: Model, message: Message) -> #(Model, Effect(Message)) {
     )
 
     // API returning messages
-    ApiReturnedWave(Ok(wave)) -> #(
-      Model(..model, trainees: wave.trainees, wave:),
-      effect.none(),
-    )
+    ApiReturnedWave(Ok(wave)) -> {
+      let assert [trainee, ..] = wave.trainees
+      let trainees = list.repeat(trainee, 25)
+      #(Model(..model, trainees: trainees, wave:), effect.none())
+    }
 
     ApiReturnedWave(Error(err)) -> #(model, rsvp_err_to_toast("wave", err))
 
@@ -842,47 +847,61 @@ fn view(model: Model) -> Element(Message) {
           html.nav(
             [
               class(
-                "page-sidebar flex flex-col border-r border-gray-800 h-[100dvh]",
+                "page-sidebar flex flex-col border-r border-gray-800 h-[100dvh] "
+                <> case model.sidebar_open {
+                  True -> "open"
+                  _ -> ""
+                },
               ),
             ],
             [
-              html.details([class("relative")], [
-                html.summary([class("sidebar-logo")], [
-                  icons.mortarboard([]),
-                  html.div([], [
-                    html.h3([], [html.text("Academy")]),
-                    html.p([class("font-bold text-xs text-gray-400")], [
-                      {
-                        let #(calendar.Date(year:, month:, ..), _) =
-                          timestamp.to_calendar(
-                            model.wave.begin_at,
-                            calendar.local_offset(),
-                          )
+              html.div([class("sidebar-logo")], [
+                icons.mortarboard([class("size-12 fill-ow-orange")]),
+                html.div([], [
+                  html.h3([], [html.text("Academy")]),
+                  html.details([class("inline-block relative")], [
+                    html.summary([class("list-none ")], [
+                      html.p(
+                        [
+                          class(
+                            "font-bold text-xs text-gray-400 flex items-center",
+                          ),
+                        ],
+                        [
+                          {
+                            let #(calendar.Date(year:, month:, ..), _) =
+                              timestamp.to_calendar(
+                                model.wave.begin_at,
+                                calendar.local_offset(),
+                              )
 
-                        html.text(
-                          calendar.month_to_string(month)
-                          <> " "
-                          <> int.to_string(year),
-                        )
-                      },
+                            html.text(
+                              calendar.month_to_string(month)
+                              <> " "
+                              <> int.to_string(year),
+                            )
+                          },
+                          icons.chevron_down([class("size-3 ml-2")]),
+                        ],
+                      ),
                     ]),
-                  ]),
-                  icons.chevron_down([class("size-4 ml-auto")]),
-                ]),
-                html.ul(
-                  [
-                    class(
-                      "absolute top-full left-3 right-3 bg-gray-900 border border-gray-800 rounded-lg p-1 z-50",
+
+                    html.ul(
+                      [
+                        class(
+                          "absolute top-full left-3 right-3 bg-gray-900 border border-gray-800 rounded-lg p-1 z-50",
+                        ),
+                      ],
+                      [
+                        html.li([], [html.text("Coming soon...")]),
+                        // html.li([], [html.button([], [html.text("2026 — June")])]),
+                      // html.li([], [html.button([], [html.text("2025 — December")])]),
+                      // html.li([], [html.button([], [html.text("2023 — Jure")])]),
+                      // html.li([], [html.button([], [html.text("2021 — Septober")])]),
+                      ],
                     ),
-                  ],
-                  [
-                    html.li([], [html.text("Coming soon...")]),
-                    // html.li([], [html.button([], [html.text("2026 — June")])]),
-                  // html.li([], [html.button([], [html.text("2025 — December")])]),
-                  // html.li([], [html.button([], [html.text("2023 — Jure")])]),
-                  // html.li([], [html.button([], [html.text("2021 — Septober")])]),
-                  ],
-                ),
+                  ]),
+                ]),
               ]),
               html.ul(
                 [],

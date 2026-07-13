@@ -1629,7 +1629,7 @@ fn questions_view(user: User, questions: List(String)) {
 }
 
 fn stats_view(model: Model) {
-  html.main([class("p-6 bg-gray-900 h-full")], [
+  html.main([class("p-6 bg-gray-900 h-full overflow-y-auto")], [
     case model.stats {
       Some(stats) ->
         html.section([class("grid lg:grid-cols-3 gap-8")], [
